@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tezfinal-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-moodlens}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - tezfinal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-moodlens}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: ai-service/Dockerfile
+    container_name: tezfinal-ai
+    environment:
+      TEZFINAL_DEMO_MODE: ${TEZFINAL_DEMO_MODE:-true}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL_NAME: ${GEMINI_MODEL_NAME:-gemini-3-flash-preview}
+      GEMINI_FOLLOWUP_API_KEY: ${GEMINI_FOLLOWUP_API_KEY:-}
+      GEMINI_FOLLOWUP_MODEL_NAME: ${GEMINI_FOLLOWUP_MODEL_NAME:-gemini-3-flash-preview}
+      LOCAL_FACE_MODEL_ID: ${LOCAL_FACE_MODEL_ID:-trpakov/vit-face-expression}
+      LOCAL_FACE_MODEL_DIR: ${LOCAL_FACE_MODEL_DIR:-/opt/models/trpakov-vit-face-expression}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: tezfinal-api
+    environment:
+      DATABASE_URL: Host=postgres;Port=5432;Database=${POSTGRES_DB:-moodlens};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:-tezfinal_super_secret_jwt_key_32chars!!}
+      JWT_ISSUER: ${JWT_ISSUER:-MoodLens}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-MoodLensApp}
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_TIMEOUT_SECONDS: 180
+      REASON_CHECK_API_URL: ${REASON_CHECK_API_URL:-}
+      REASON_CHECK_API_KEY: ${REASON_CHECK_API_KEY:-}
+      REASON_CHECK_TIMEOUT_SECONDS: ${REASON_CHECK_TIMEOUT_SECONDS:-20}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
+      APPLY_MIGRATIONS_ON_STARTUP: ${APPLY_MIGRATIONS_ON_STARTUP:-true}
+      ASPNETCORE_URLS: http://+:5000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5000}
+    container_name: tezfinal-client
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+volumes:
+  tezfinal_postgres_data:

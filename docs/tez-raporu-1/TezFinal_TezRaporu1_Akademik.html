@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yapay Zeka Destekli Yaşam Koçu | 2. Dönem Tez Raporu - 1</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+
+      :root {
+        --ink: #1f2937;
+        --muted: #4b5563;
+        --line: #d9e1ee;
+        --accent: #123f7a;
+        --soft: #f7f9fc;
+        --panel: #fbfdff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #edf2f8;
+        color: var(--ink);
+        font-family: "Times New Roman", Georgia, serif;
+      }
+
+      .report {
+        width: min(1100px, calc(100% - 40px));
+        margin: 20px auto 40px;
+      }
+
+      .page {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+        padding: 28px 34px;
+        margin-bottom: 18px;
+      }
+
+      .cover {
+        min-height: 1500px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        text-align: center;
+        padding-top: 40px;
+        padding-bottom: 34px;
+      }
+
+      .logo {
+        width: 150px;
+        display: block;
+        margin: 0 auto 18px;
+      }
+
+      .university {
+        color: var(--accent);
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
+      .faculty {
+        margin-top: 8px;
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .department {
+        margin-top: 6px;
+        font-size: 19px;
+        color: var(--muted);
+      }
+
+      .report-type {
+        margin-top: 62px;
+        font-size: 18px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #64748b;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-weight: 700;
+      }
+
+      .title {
+        margin: 18px 0 10px;
+        color: var(--accent);
+        font-size: 42px;
+        line-height: 1.2;
+        font-weight: 700;
+      }
+
+      .subtitle {
+        margin: 0 auto;
+        max-width: 760px;
+        font-size: 22px;
+        color: #374151;
+        line-height: 1.6;
+      }
+
+      .meta-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 18px;
+        font-size: 17px;
+      }
+
+      .meta-table td {
+        border: 1px solid var(--line);
+        padding: 11px 12px;
+        vertical-align: top;
+      }
+
+      .meta-table td:first-child {
+        width: 220px;
+        font-weight: 700;
+        background: #eef4fb;
+      }
+
+      .city-note {
+        margin-top: 18px;
+        font-size: 17px;
+        color: #475569;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        color: var(--accent);
+        font-size: 28px;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 21px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0 0 11px;
+        font-size: 15.5px;
+        line-height: 1.72;
+        text-align: justify;
+      }
+
+      .lead {
+        font-size: 16.4px;
+      }
+
+      .keywords,
+      .note,
+      .success {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+        background: var(--soft);
+      }
+
+      .success {
+        background: #effbf2;
+        border-color: #bfe4c7;
+      }
+
+      .toc {
+        margin: 0;
+        padding-left: 24px;
+        font-size: 15.5px;
+        line-height: 1.85;
+      }
+
+      .grid-2,
+      .grid-3 {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+        background: var(--panel);
+      }
+
+      .panel p:last-child {
+        margin-bottom: 0;
+      }
+
+      .figure {
+        margin: 14px 0 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        background: #fbfdff;
+        break-inside: avoid;
+      }
+
+      .figure img {
+        width: 100%;
+        display: block;
+        border-radius: 8px;
+        border: 1px solid #d6deea;
+      }
+
+      .figure.small img {
+        max-height: 330px;
+        object-fit: contain;
+        background: white;
+      }
+
+      .figure.medium img {
+        max-height: 540px;
+        object-fit: contain;
+        background: white;
+      }
+
+      figcaption {
+        margin-top: 8px;
+        font-size: 13.2px;
+        color: #475569;
+        line-height: 1.55;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 14.5px;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 10px 11px;
+        text-align: left;
+        vertical-align: top;
+        line-height: 1.6;
+      }
+
+      th {
+        background: #eef4fb;
+      }
+
+      ul,
+      ol {
+        margin: 0 0 10px;
+        padding-left: 22px;
+        font-size: 15.5px;
+        line-height: 1.75;
+      }
+
+      li {
+        margin-bottom: 4px;
+      }
+
+      .compact-list li {
+        margin-bottom: 2px;
+      }
+
+      .signature {
+        margin-top: 18px;
+        font-size: 15px;
+        color: #475569;
+      }
+
+      .section {
+        break-inside: auto;
+      }
+
+      @media print {
+        body {
+          background: white;
+        }
+
+        .report {
+          width: 100%;
+          margin: 0;
+        }
+
+        .page {
+          box-shadow: none;
+          border-radius: 0;
+          margin: 0 0 8mm;
+          padding: 0;
+        }
+
+        .cover {
+          min-height: 0;
+          height: calc(297mm - 24mm);
+          page-break-after: always;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="report">
+      <section class="page cover">
+        <div>
+          <img class="logo" src="assets/pau-logo.svg" alt="Pamukkale Üniversitesi logosu" />
+          <div class="university">Pamukkale Üniversitesi</div>
+          <div class="faculty">Mühendislik Fakültesi</div>
+          <div class="department">Bilgisayar Mühendisliği Bölümü</div>
+        </div>
+
+        <div>
+          <div class="report-type">2. Dönem Tez Raporu - 1</div>
+          <div class="title">Yapay Zeka Destekli Yaşam Koçu</div>
+          <p class="subtitle">Sistemin ikinci dönem ara raporudur.</p>
+        </div>
+
+        <div>
+          <table class="meta-table">
+            <tr>
+              <td>Hazırlayan Öğrenciler</td>
+              <td>
+                Eray Ülgen - 22253006<br />
+                Halim Mert Kazdal - 22253070
+              </td>
+            </tr>
+            <tr>
+              <td>Danışman</td>
+              <td>Prof. Dr. Tufan Turacı</td>
+            </tr>
+            <tr>
+              <td>Üniversite</td>
+              <td>Pamukkale Üniversitesi</td>
+            </tr>
+            <tr>
+              <td>Bölüm</td>
+              <td>Bilgisayar Mühendisliği Bölümü</td>
+            </tr>
+            <tr>
+              <td>Dönem</td>
+              <td>2025-2026 Eğitim Öğretim Yılı Bahar Dönemi</td>
+            </tr>
+          </table>
+
+          <div class="city-note">Denizli, 2026</div>
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>Özet</h1>
+        <p class="lead">
+          Bu raporda, ikinci dönemde gelinen noktada geliştirilen <strong>Tez</strong> projesinin mevcut durumu
+          özetlenmektedir. Çalışmanın amacı, kullanıcının ruh halini selfie ve metin verisini birlikte işleyerek
+          yorumlayan ve bu ruh haline uygun kişiselleştirilmiş öneriler sunan bir yapay zeka destekli yaşam koçu
+          sistemi geliştirmektir.
+        </p>
+        <p>
+          Bu dönem boyunca proje, iki güçlü yapının bir araya getirilmesiyle olgunlaştırılmıştır. Halim Mert Kazdal
+          tarafından geliştirilen <strong>backend</strong> yapısı veri, auth ve servis omurgası açısından
+          temel alınmış; Eray Ülgen tarafından geliştirilen <strong>frontend</strong> yapısı ise arayüz, sayfa
+          akışları ve kullanıcı deneyimi açısından projeye taşınmıştır. Böylece sistem; teknik açıdan daha sağlam,
+          görsel açıdan daha sunulabilir ve tez süreci açısından daha etkileyici bir seviyeye çıkarılmıştır.
+        </p>
+        <p>
+          Bu sürecin sonunda kullanıcı kaydı, misafir kullanım modeli, analiz geçmişi, profil yönetimi, sonuç
+          ekranı, öneri sistemi, geri bildirim toplama, araştırma metrikleri ve Docker ile çalıştırılabilirlik gibi
+          kritik bileşenler çalışan tek bir ürün içinde birleştirilmiştir.
+        </p>
+        <div class="keywords">
+          <strong>Anahtar Kelimeler:</strong> duygu analizi, çoklu kipli sistemler, yapay zeka destekli yaşam koçu,
+          kullanıcı geri bildirimi, araştırma metrikleri, React, ASP.NET Core, FastAPI, Docker
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>İçindekiler</h1>
+        <ol class="toc">
+          <li>Giriş</li>
+          <li>Katkı Dağılımı ve Geliştirme Yaklaşımı</li>
+          <li>Sistem Mimarisi</li>
+          <li>Arayüz ve Kullanıcı Deneyimi Geliştirmeleri</li>
+          <li>Backend ve İş Kuralları Geliştirmeleri</li>
+          <li>Geri Bildirim ve Araştırma Metrikleri</li>
+          <li>Dağıtım, Doğrulama ve Mevcut Durum</li>
+          <li>Sonuç</li>
+        </ol>
+      </section>
+
+      <section class="page section">
+        <h1>1. Giriş</h1>
+        <p>
+          Bu tez çalışmasının temel hedefi, kullanıcının duygu durumunu yalnızca tespit eden değil; aynı zamanda bu
+          tespit üzerinden yönlendirici ve kişisel çıktılar üreten bir sistem geliştirmektir. Bu nedenle proje yalnızca
+          bir sınıflandırma problemi olarak ele alınmamış, kullanıcıya pratik fayda üretmesi hedeflenen bir ürün olarak
+          kurgulanmıştır.
+        </p>
+        <p>
+          İkinci dönemde odak noktası, ilk aşamada ayrı ayrı gelişmiş durumda bulunan backend ve frontend yapılarını
+          tek bir nihai ürün haline getirmek olmuştur. Böylece proje, bir prototipten çıkarak sunum yapılabilir,
+          ekranları tamamlanmış ve kullanıcı davranışı ölçülebilir bir sisteme dönüşmüştür.
+        </p>
+
+        <figure class="figure medium">
+          <img src="assets/screenshots/01-home.png" alt="Tez ana sayfa ekranı" />
+          <figcaption>
+            Şekil 1. Ana sayfa ekranı. Sistem, ürün dilini ve temel akışını kullanıcıya ilk ekranda açık biçimde
+            anlatacak şekilde düzenlenmiştir.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="page section">
+        <h1>2. Katkı Dağılımı ve Geliştirme Yaklaşımı</h1>
+        <p>
+          Bu dönemde projeyi olgunlaştıran temel unsur, iki farklı çalışmanın güçlü yönlerinin tek yapıda birleşmesidir.
+          Burada katkı dağılımı açık biçimde şu şekilde şekillenmiştir:
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Kişi</th>
+              <th>Çalışma Alanı</th>
+              <th>Projeye Taşınan Güçlü Yön</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Halim Mert Kazdal</td>
+              <td>Backend yapısı</td>
+              <td>Auth, servis omurgası, veri yönetimi, analiz geçmişi ve öneri katmanı için daha sağlam backend temeli</td>
+            </tr>
+            <tr>
+              <td>Eray Ülgen</td>
+              <td>Frontend yapısı</td>
+              <td>Arayüz gücü, sayfa akışları, kullanıcı deneyimi, ekranların ürün hissi ve görsel tutarlılık</td>
+            </tr>
+            <tr>
+              <td>Ortak nihai çalışma</td>
+              <td>Entegrasyon ve uyarlama süreci</td>
+              <td>İki yapı arasındaki kontrat farklarının kapatılması ve tek bir çalışan tez ürününe dönüştürülmesi</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>
+          Başka bir ifadeyle, <strong>Mert tarafından geliştirilen backend</strong> projenin teknik omurgasını
+          oluştururken; <strong>Eray tarafından geliştirilen frontend</strong> projenin kullanıcıya görünen
+          yüzünü ve deneyim gücünü belirlemiştir. İkinci dönem boyunca yürütülen esas iş, bu iki yapıyı birbirine tam
+          uyumlu hale getirerek tek bir tez ürünü üretmek olmuştur.
+        </p>
+
+        <div class="success">
+          Bu yaklaşım sayesinde proje, ne yalnızca güçlü backend’e sahip bir teknik prototip olarak kaldı ne de sadece
+          görsel olarak etkileyici bir arayüz olarak sınırlı kaldı. İki tarafın güçlü yönleri korunarak çalışan ve
+          sunulabilir bir sistem ortaya çıkarıldı.
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>3. Sistem Mimarisi</h1>
+        <p>
+          Sistem dört ana katmandan oluşmaktadır: frontend arayüzü, API Gateway, AI Service ve PostgreSQL veri tabanı.
+          Frontend katmanı kullanıcı ile etkileşimi yönetirken, API Gateway auth, history, feedback ve metrics gibi
+          süreçleri kontrol etmektedir. AI Service duygu analizi ve öneri üretimini üstlenmekte; veri tabanı ise tüm bu
+          çıktıları kalıcı hale getirmektedir.
+        </p>
+
+        <div class="grid-2">
+          <figure class="figure small">
+            <img src="assets/architecture-diagram.svg" alt="Sistem mimarisi diyagramı" />
+            <figcaption>Şekil 2. Tez sistem mimarisi.</figcaption>
+          </figure>
+          <figure class="figure small">
+            <img src="assets/deployment-diagram.svg" alt="Docker dağıtım diyagramı" />
+            <figcaption>Şekil 3. Docker çalışma düzeni.</figcaption>
+          </figure>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <h2>Frontend tarafı</h2>
+            <p>
+              Eray tarafından geliştirilen frontend hattı; ana sayfa, analiz, sonuç, giriş, kayıt, geçmiş, profil ve
+              metrics ekranlarını kapsayan kullanıcı deneyimi omurgasını sağlamıştır.
+            </p>
+          </div>
+          <div class="panel">
+            <h2>Backend tarafı</h2>
+            <p>
+              Mert tarafından geliştirilen backend hattı; auth, session yönetimi, history, recommendation, feedback ve
+              araştırma metriklerinin güvenilir biçimde çalışmasını sağlamıştır.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>4. Arayüz ve Kullanıcı Deneyimi Geliştirmeleri</h1>
+        <p>
+          İkinci dönemde frontend tarafında temel amaç, sistemi daha akıcı, anlaşılır ve sunulabilir hale getirmek
+          olmuştur. Özellikle giriş ve kayıt ekranları, analiz ekranı ve sonuç ekranı tek bir ürün çizgisinde
+          birleştirilmiştir.
+        </p>
+
+        <div class="grid-2">
+          <figure class="figure small">
+            <img src="assets/screenshots/02-login.png" alt="Giriş ekranı" />
+            <figcaption>Şekil 4. Giriş ekranı.</figcaption>
+          </figure>
+          <figure class="figure small">
+            <img src="assets/screenshots/03-register.png" alt="Kayıt ekranı" />
+            <figcaption>Şekil 5. Kayıt ekranı.</figcaption>
+          </figure>
+        </div>
+
+        <figure class="figure medium">
+          <img src="assets/screenshots/04-analyze.png" alt="Analiz ekranı" />
+          <figcaption>
+            Şekil 6. Analiz ekranı. Kullanıcı metin ve selfie verisini aynı akış içinde sisteme iletmektedir.
+          </figcaption>
+        </figure>
+
+        <figure class="figure medium">
+          <img src="assets/screenshots/05-result.png" alt="Sonuç ekranı" />
+          <figcaption>
+            Şekil 7. Sonuç ekranı. Duygu sonucu, öneriler ve geri bildirim formu tek sayfada sunulmaktadır.
+          </figcaption>
+        </figure>
+
+        <div class="note">
+          Bu ekranlar, Eray tarafından geliştirilen frontend yaklaşımının güçlü yönlerini göstermektedir.
+          Kullanıcı deneyimi, kart yapıları, görsel hiyerarşi ve sayfa geçişleri bu taraftan projeye taşınmıştır.
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>5. Backend ve İş Kuralları Geliştirmeleri</h1>
+        <p>
+          Backend tarafında sadece servislerin çalışması yeterli görülmemiş, aynı zamanda ürün davranışını şekillendiren
+          kurallar da tanımlanmıştır. Bu dönemde özellikle misafir kullanıcı modeli, guest session takibi ve guest
+          verisinin hesaba taşınması önemli geliştirme başlıkları olmuştur.
+        </p>
+
+        <figure class="figure small">
+          <img src="assets/guest-flow.svg" alt="Misafir kullanıcı akışı" />
+          <figcaption>
+            Şekil 8. Misafir kullanıcı akışı. İlk üç analiz misafir olarak serbest bırakılmış, dördüncü analizde giriş
+            zorunluluğu getirilmiştir.
+          </figcaption>
+        </figure>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Başlık</th>
+              <th>Gerçekleştirilen geliştirme</th>
+              <th>Katkı</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>JWT tabanlı auth</td>
+              <td>Login ve register uçları nihai ürün akışına göre düzenlenmiştir.</td>
+              <td>Korumalı alanlar ve kullanıcı yönetimi sağlanmıştır.</td>
+            </tr>
+            <tr>
+              <td>Guest limit kuralı</td>
+              <td>İlk üç analiz misafir kullanıma açık bırakılmıştır.</td>
+              <td>Ürünü deneme eşiği korunmuş, hesap geçişi desteklenmiştir.</td>
+            </tr>
+            <tr>
+              <td>Guest merge</td>
+              <td>Misafir olarak oluşan analizlerin kullanıcı hesabına taşınması sağlanmıştır.</td>
+              <td>Veri sürekliliği korunmuştur.</td>
+            </tr>
+            <tr>
+              <td>History ve recommendations</td>
+              <td>Sonuç ekranı ve geçmiş ekranı ile uyumlu veri modeli kurulmuştur.</td>
+              <td>Frontend-backend entegrasyonu tamamlanmıştır.</td>
+            </tr>
+            <tr>
+              <td>Admin ve export hazırlığı</td>
+              <td>İleri faz yönetim ihtiyaçları için temel servis uçları hazırlanmıştır.</td>
+              <td>Final teslim öncesi genişlemeye açık bir zemin kurulmuştur.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>
+          Bu katman, Mert tarafından geliştirilen backend omurgasının projeye sağladığı temel avantajı
+          göstermektedir: veri yönetimi ve servis tarafında daha sağlam, daha sürdürülebilir ve genişlemeye açık bir
+          yapı elde edilmiştir.
+        </p>
+      </section>
+
+      <section class="page section">
+        <h1>6. Geri Bildirim ve Araştırma Metrikleri</h1>
+        <p>
+          İkinci dönemin ayırt edici çıktılarından biri, sistemin kullanıcıdan geri bildirim toplayabilen ve bu
+          geri bildirimi araştırma metriğine dönüştürebilen bir yapıya kavuşmasıdır. Böylece proje, yalnızca
+          çalışan bir uygulama değil; aynı zamanda ölçülebilir bir araştırma prototipi haline gelmiştir.
+        </p>
+
+        <div class="grid-2">
+          <figure class="figure small">
+            <img src="assets/screenshots/06-history.png" alt="Geçmiş ekranı" />
+            <figcaption>Şekil 9. Geçmiş ekranı.</figcaption>
+          </figure>
+          <figure class="figure small">
+            <img src="assets/screenshots/07-profile.png" alt="Profil ekranı" />
+            <figcaption>Şekil 10. Profil ekranı.</figcaption>
+          </figure>
+        </div>
+
+        <figure class="figure medium">
+          <img src="assets/screenshots/08-metrics.png" alt="Metrics ekranı" />
+          <figcaption>
+            Şekil 11. Metrics ekranı. Kullanım, kalite ve geri bildirim verileri tek panelde izlenmektedir.
+          </figcaption>
+        </figure>
+
+        <div class="grid-3">
+          <div class="panel">
+            <h3>Toplanan veriler</h3>
+            <p>Genel puan, analiz doğruluğu, öneri kalitesi, faydalılık ve tekrar kullanım niyeti.</p>
+          </div>
+          <div class="panel">
+            <h3>Segment mantığı</h3>
+            <p>Guest / registered, yüz tespiti var / yok ve hızlı / derin analiz grupları ayrı incelenmektedir.</p>
+          </div>
+          <div class="panel">
+            <h3>Akademik değer</h3>
+            <p>Bu yapı, sistemi değerlendirilebilir ve raporlanabilir bir araştırma çıktısına dönüştürmektedir.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>7. Dağıtım, Doğrulama ve Mevcut Durum</h1>
+        <p>
+          Proje bu rapor hazırlanırken Docker üzerinden yeniden ayağa kaldırılmış, localhost ortamında test edilmiş ve
+          rapor görselleri canlı sistemden alınmıştır. Bu nedenle raporda yer alan ekran görüntüleri sadece tasarım
+          örneği değil, çalışan sistemin gerçek çıktılarıdır.
+        </p>
+
+        <ul class="compact-list">
+          <li>Frontend, API Gateway, AI Service ve PostgreSQL birlikte çalıştırılmıştır.</li>
+          <li>Docker image’ları yeniden build edilmiştir.</li>
+          <li>Demo kullanıcı ile login, analyze, result, history, profile ve metrics akışları doğrulanmıştır.</li>
+          <li>Feedback verisi sisteme işlenmiş ve metrics ekranında görünür hale getirilmiştir.</li>
+          <li>Rapor içindeki görseller canlı sistemden otomatik olarak üretilmiştir.</li>
+        </ul>
+
+        <div class="success">
+          Gelinen noktada sistem; kullanıcı deneyimi, backend kararlılığı, araştırma metrikleri ve çalıştırılabilirlik
+          açısından tez sunumuna uygun bir seviyeye ulaşmıştır.
+        </div>
+      </section>
+
+      <section class="page section">
+        <h1>8. Sonuç</h1>
+        <p>
+          İkinci dönem sonunda proje önemli bir bütünlük kazanmıştır. Mert tarafından geliştirilen backend
+          omurgası ile Eray tarafından geliştirilen frontend deneyimi tek bir üründe birleştirilmiş; sonuçta hem
+          teknik hem de görsel açıdan daha güçlü bir tez sistemi ortaya çıkmıştır.
+        </p>
+        <p>
+          Bu yapı sayesinde kullanıcı yalnızca analiz sonucu gören değil; kayıt olabilen, geçmişine erişebilen,
+          geri bildirim verebilen ve sistemin öneri kapasitesinden yararlanabilen bir deneyim yaşamaktadır. Aynı anda
+          proje, araştırma metriği üretebildiği için akademik değerlendirme açısından da daha güçlü hale gelmiştir.
+        </p>
+        <p>
+          Bundan sonraki aşamada admin panelinin genişletilmesi, araştırma karşılaştırmalarının artırılması ve güvenlik
+          katmanının daha da güçlendirilmesi hedeflenmektedir. Ancak bu raporun kapsadığı aşamada, proje artık yalnızca
+          fikir düzeyinde değil; çalışan, gösterilebilir ve savunulabilir bir sistem düzeyindedir.
+        </p>
+
+        <div class="signature">
+          Hazırlayanlar:<br />
+          Eray Ülgen - 22253006<br />
+          Halim Mert Kazdal - 22253070
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

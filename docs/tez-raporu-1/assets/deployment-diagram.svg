@@ -1,0 +1,37 @@
+<svg width="1600" height="860" viewBox="0 0 1600 860" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="860" rx="32" fill="#07111F"/>
+  <text x="90" y="95" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="700">Docker Çalıştırma Düzeni</text>
+  <text x="90" y="138" fill="#93C5FD" font-family="Segoe UI, Arial, sans-serif" font-size="23">TezFinal stack'i tek komutla ayağa kaldırılacak şekilde düzenlendi.</text>
+
+  <rect x="80" y="220" width="1440" height="520" rx="30" fill="#0B1224" stroke="#1E293B" stroke-width="3"/>
+  <rect x="145" y="315" width="280" height="210" rx="24" fill="#1D4ED8"/>
+  <text x="195" y="380" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">Client</text>
+  <text x="195" y="424" fill="#DBEAFE" font-family="Segoe UI, Arial, sans-serif" font-size="24">Nginx üstünde yayın</text>
+  <text x="195" y="462" fill="#DBEAFE" font-family="Segoe UI, Arial, sans-serif" font-size="24">Port: 3000</text>
+
+  <rect x="495" y="315" width="280" height="210" rx="24" fill="#0EA5E9"/>
+  <text x="535" y="380" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">API Gateway</text>
+  <text x="535" y="424" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="24">ASP.NET Core</text>
+  <text x="535" y="462" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="24">Port: 5000</text>
+
+  <rect x="845" y="315" width="280" height="210" rx="24" fill="#10B981"/>
+  <text x="905" y="380" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">AI Service</text>
+  <text x="905" y="424" fill="#D1FAE5" font-family="Segoe UI, Arial, sans-serif" font-size="24">FastAPI</text>
+  <text x="905" y="462" fill="#D1FAE5" font-family="Segoe UI, Arial, sans-serif" font-size="24">Port: 8000</text>
+
+  <rect x="1195" y="315" width="280" height="210" rx="24" fill="#F59E0B"/>
+  <text x="1238" y="380" fill="#111827" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">PostgreSQL</text>
+  <text x="1238" y="424" fill="#111827" font-family="Segoe UI, Arial, sans-serif" font-size="24">Veri tabanı</text>
+  <text x="1238" y="462" fill="#111827" font-family="Segoe UI, Arial, sans-serif" font-size="24">Port: 5432</text>
+
+  <path d="M425 420H475" stroke="#93C5FD" stroke-width="8" stroke-linecap="round"/>
+  <path d="M775 420H825" stroke="#93C5FD" stroke-width="8" stroke-linecap="round"/>
+  <path d="M1125 420H1175" stroke="#93C5FD" stroke-width="8" stroke-linecap="round"/>
+  <polygon points="458,405 488,420 458,435" fill="#93C5FD"/>
+  <polygon points="808,405 838,420 808,435" fill="#93C5FD"/>
+  <polygon points="1158,405 1188,420 1158,435" fill="#93C5FD"/>
+
+  <rect x="170" y="590" width="1240" height="100" rx="24" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="210" y="648" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">Başlatma:</text>
+  <text x="395" y="648" fill="#A5F3FC" font-family="Consolas, monospace" font-size="30">.\start.ps1  →  docker compose up --build -d</text>
+</svg>

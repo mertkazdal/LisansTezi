@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Yaşam Koçu Maskable Icon</title>
+  <desc id="desc">Maskable PWA icon for Yapay Zeka Destekli Yaşam Koçu.</desc>
+  <defs>
+    <radialGradient id="bg" cx="32%" cy="24%" r="76%">
+      <stop offset="0%" stop-color="#ecfeff"/>
+      <stop offset="24%" stop-color="#67e8f9"/>
+      <stop offset="60%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="86" y1="90" x2="430" y2="430">
+      <stop stop-color="#2dd4bf"/>
+      <stop offset="0.48" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="#020617"/>
+  <circle cx="256" cy="256" r="178" fill="url(#bg)" opacity="0.95"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#ring)" stroke-width="22" opacity="0.88"/>
+  <path d="M146 276c46-81 158-124 237-67-33 5-64 18-91 43-33 29-53 66-59 109-21-49-49-76-87-85Z" fill="#f8fafc" opacity="0.93"/>
+  <circle cx="180" cy="166" r="21" fill="#cffafe"/>
+  <circle cx="360" cy="350" r="17" fill="#a7f3d0"/>
+</svg>

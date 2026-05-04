@@ -1,0 +1,23 @@
+<svg width="900" height="900" viewBox="0 0 900 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <path id="topArc" d="M 120 450 A 330 330 0 0 1 780 450" />
+    <path id="bottomArc" d="M 780 450 A 330 330 0 0 1 120 450" />
+  </defs>
+  <rect width="900" height="900" fill="white" />
+  <circle cx="450" cy="450" r="385" stroke="#0B4A8B" stroke-width="10" />
+  <circle cx="450" cy="450" r="300" stroke="#0B4A8B" stroke-width="5" />
+
+  <text fill="#0B4A8B" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700" letter-spacing="2.5">
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle">PAMUKKALE ÜNİVERSİTESİ</textPath>
+  </text>
+  <text fill="#0B4A8B" font-family="Segoe UI, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="3">
+    <textPath href="#bottomArc" startOffset="50%" text-anchor="middle">DENİZLİ</textPath>
+  </text>
+
+  <rect x="422" y="232" width="152" height="256" fill="#1992D4" />
+  <rect x="272" y="330" width="170" height="200" fill="#0B4A8B" />
+  <path d="M282 400C344 372 415 366 474 388C448 405 432 428 430 454C396 444 362 445 328 456C314 460 300 466 282 474V400Z" fill="white" />
+  <path d="M430 454C474 430 525 426 574 444C528 468 484 488 430 492V454Z" fill="white" />
+
+  <text x="450" y="640" fill="#0B4A8B" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="600" text-anchor="middle">1992</text>
+</svg>

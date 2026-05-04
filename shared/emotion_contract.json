@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "emotions": [
+    { "key": "happy", "group": "positive", "labels": { "tr": "Mutlu", "en": "Happy" } },
+    { "key": "sad", "group": "negative", "labels": { "tr": "Üzgün", "en": "Sad" } },
+    { "key": "angry", "group": "negative", "labels": { "tr": "Öfkeli", "en": "Angry" } },
+    { "key": "anxious", "group": "negative", "labels": { "tr": "Endişeli", "en": "Anxious" } },
+    { "key": "excited", "group": "positive", "labels": { "tr": "Heyecanlı", "en": "Excited" } },
+    { "key": "calm", "group": "neutral", "labels": { "tr": "Sakin", "en": "Calm" } },
+    { "key": "tired", "group": "negative", "labels": { "tr": "Yorgun", "en": "Tired" } },
+    { "key": "stressed", "group": "negative", "labels": { "tr": "Stresli", "en": "Stressed" } },
+    { "key": "nostalgic", "group": "neutral", "labels": { "tr": "Nostaljik", "en": "Nostalgic" } },
+    { "key": "motivated", "group": "positive", "labels": { "tr": "Motive", "en": "Motivated" } },
+    { "key": "hopeful", "group": "positive", "labels": { "tr": "Umutlu", "en": "Hopeful" } },
+    { "key": "overwhelmed", "group": "negative", "labels": { "tr": "Bunalmış", "en": "Overwhelmed" } }
+  ]
+}

@@ -1,0 +1,32 @@
+<svg width="1600" height="720" viewBox="0 0 1600 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="720" rx="30" fill="#111827"/>
+  <text x="88" y="90" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="700">Misafir Kullanıcı Akışı</text>
+  <text x="88" y="132" fill="#C4B5FD" font-family="Segoe UI, Arial, sans-serif" font-size="24">Bu dönem tamamlanan önemli iş kurallarından biri</text>
+
+  <rect x="95" y="230" width="260" height="260" rx="28" fill="#312E81"/>
+  <circle cx="225" cy="305" r="52" fill="#F8FAFC"/>
+  <text x="153" y="395" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">1-3. analiz</text>
+  <text x="135" y="436" fill="#EDE9FE" font-family="Segoe UI, Arial, sans-serif" font-size="22">Misafir kullanıcıya açık</text>
+
+  <rect x="480" y="230" width="260" height="260" rx="28" fill="#0F766E"/>
+  <text x="540" y="320" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="700">Analiz</text>
+  <text x="527" y="362" fill="#CCFBF1" font-family="Segoe UI, Arial, sans-serif" font-size="24">sonucu + öneri</text>
+  <text x="515" y="430" fill="#CCFBF1" font-family="Segoe UI, Arial, sans-serif" font-size="22">Feedback bırakabilir</text>
+
+  <rect x="865" y="230" width="260" height="260" rx="28" fill="#9A3412"/>
+  <text x="925" y="320" fill="#FFF7ED" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="700">4. analiz</text>
+  <text x="902" y="362" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="24">login zorunluluğu</text>
+  <text x="900" y="430" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="22">GUEST_QUOTA_EXCEEDED</text>
+
+  <rect x="1250" y="230" width="260" height="260" rx="28" fill="#1D4ED8"/>
+  <text x="1312" y="320" fill="#EFF6FF" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="700">Kayıt / giriş</text>
+  <text x="1285" y="362" fill="#DBEAFE" font-family="Segoe UI, Arial, sans-serif" font-size="24">guest verisi hesaba taşınır</text>
+  <text x="1322" y="430" fill="#DBEAFE" font-family="Segoe UI, Arial, sans-serif" font-size="22">history + profile aktif</text>
+
+  <path d="M355 360H445" stroke="#C4B5FD" stroke-width="8" stroke-linecap="round"/>
+  <path d="M740 360H830" stroke="#5EEAD4" stroke-width="8" stroke-linecap="round"/>
+  <path d="M1125 360H1215" stroke="#FDBA74" stroke-width="8" stroke-linecap="round"/>
+  <polygon points="420,345 450,360 420,375" fill="#C4B5FD"/>
+  <polygon points="805,345 835,360 805,375" fill="#5EEAD4"/>
+  <polygon points="1190,345 1220,360 1190,375" fill="#FDBA74"/>
+</svg>

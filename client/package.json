@@ -1,0 +1,43 @@
+{
+  "name": "ai-life-coach-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "npm run test:unit && npm run test:ui",
+    "test:unit": "node --test src/tests/savedRecommendations.node.test.js src/tests/resultShareCard.node.test.js src/tests/i18nResources.node.test.js src/tests/emotions.node.test.js src/tests/pwaManifest.node.test.js src/tests/registerServiceWorker.node.test.js src/tests/guestSession.node.test.js",
+    "test:ui": "vitest run --config vite.config.js",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "framer-motion": "^11.5.4",
+    "i18next": "^23.14.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-dropzone": "^14.2.3",
+    "react-hot-toast": "^2.6.0",
+    "react-i18next": "^15.0.1",
+    "react-router-dom": "^6.26.2",
+    "react-webcam": "^7.2.0",
+    "recharts": "^2.12.7",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^29.1.0",
+    "postcss": "^8.4.45",
+    "tailwindcss": "^3.4.10",
+    "vite": "^5.4.4",
+    "vitest": "^4.1.5"
+  }
+}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
+  <title id="title">Yaşam Koçu</title>
+  <desc id="desc">AI destekli yaşam koçu uygulaması için aurora orb simgesi.</desc>
+  <defs>
+    <radialGradient id="glow" cx="35%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#ecfeff"/>
+      <stop offset="28%" stop-color="#67e8f9"/>
+      <stop offset="62%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="20" y1="24" x2="170" y2="170">
+      <stop stop-color="#2dd4bf"/>
+      <stop offset="0.55" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="48" fill="#020617"/>
+  <circle cx="96" cy="96" r="72" fill="url(#glow)" opacity="0.92"/>
+  <circle cx="96" cy="96" r="78" fill="none" stroke="url(#ring)" stroke-width="8" opacity="0.9"/>
+  <path d="M58 104c17-30 59-46 89-25-12 2-24 7-34 16-12 11-20 25-22 41-8-18-18-28-33-32Z" fill="#f8fafc" opacity="0.92"/>
+  <circle cx="67" cy="62" r="8" fill="#cffafe"/>
+  <circle cx="136" cy="132" r="6" fill="#a7f3d0"/>
+</svg>

@@ -1,0 +1,54 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="900" rx="32" fill="#0F1020"/>
+  <rect x="70" y="58" width="1460" height="86" rx="24" fill="#17192F"/>
+  <text x="110" y="110" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="700">Tez Sistem Mimarisi</text>
+  <text x="110" y="148" fill="#A5B4FC" font-family="Segoe UI, Arial, sans-serif" font-size="22">Backend ve frontend yapilarinin tek urunde birlesimi</text>
+
+  <rect x="95" y="235" width="360" height="240" rx="28" fill="#1D2140" stroke="#7C3AED" stroke-width="3"/>
+  <text x="135" y="292" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">Frontend Katmani</text>
+  <text x="135" y="336" fill="#C7D2FE" font-family="Segoe UI, Arial, sans-serif" font-size="25">React + Vite arayuzu</text>
+  <text x="135" y="378" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Ana sayfa, analiz, sonuc, gecmis, profil</text>
+  <text x="135" y="414" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Login / register akisI</text>
+  <text x="135" y="450" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Metrics ve arastirma ekrani</text>
+
+  <rect x="620" y="180" width="360" height="350" rx="28" fill="#16213C" stroke="#38BDF8" stroke-width="3"/>
+  <text x="660" y="238" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">API Gateway</text>
+  <text x="660" y="280" fill="#BAE6FD" font-family="Segoe UI, Arial, sans-serif" font-size="25">ASP.NET Core (.NET 8)</text>
+  <text x="660" y="324" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Auth / JWT yonetimi</text>
+  <text x="660" y="360" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Guest limit ve session takibi</text>
+  <text x="660" y="396" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Analiz gecmisi ve oneri erisimi</text>
+  <text x="660" y="432" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Feedback ve metrics endpointleri</text>
+  <text x="660" y="468" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Admin / export hazirligi</text>
+
+  <rect x="1145" y="235" width="360" height="240" rx="28" fill="#17283A" stroke="#34D399" stroke-width="3"/>
+  <text x="1185" y="292" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">AI Service</text>
+  <text x="1185" y="336" fill="#BBF7D0" font-family="Segoe UI, Arial, sans-serif" font-size="25">FastAPI + analiz servisi</text>
+  <text x="1185" y="378" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Duygu analizi</text>
+  <text x="1185" y="414" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Oneri uretimi</text>
+  <text x="1185" y="450" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Demo fallback modu</text>
+
+  <rect x="620" y="620" width="360" height="170" rx="28" fill="#201B33" stroke="#F59E0B" stroke-width="3"/>
+  <text x="660" y="680" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">PostgreSQL</text>
+  <text x="660" y="722" fill="#FDE68A" font-family="Segoe UI, Arial, sans-serif" font-size="25">Kalici veri katmani</text>
+  <text x="660" y="764" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="22">Kullanicilar, analizler, oneriler, feedback</text>
+
+  <path d="M455 355H590" stroke="#8B5CF6" stroke-width="8" stroke-linecap="round"/>
+  <path d="M980 355H1115" stroke="#38BDF8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M800 540V600" stroke="#F59E0B" stroke-width="8" stroke-linecap="round"/>
+
+  <polygon points="575,340 605,355 575,370" fill="#8B5CF6"/>
+  <polygon points="1095,340 1125,355 1095,370" fill="#38BDF8"/>
+  <polygon points="785,580 800,610 815,580" fill="#F59E0B"/>
+
+  <rect x="100" y="560" width="355" height="220" rx="24" fill="#111827" stroke="#374151" stroke-width="2"/>
+  <text x="136" y="616" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">One cikan entegrasyonlar</text>
+  <text x="136" y="660" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22">- 3 ucretsiz analiz + 4. analizde login</text>
+  <text x="136" y="696" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Guest verisinin hesaba tasinmasi</text>
+  <text x="136" y="732" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Feedback tabanli arastirma metricsi</text>
+
+  <rect x="1085" y="560" width="355" height="220" rx="24" fill="#111827" stroke="#374151" stroke-width="2"/>
+  <text x="1120" y="616" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">Urun ciktisi</text>
+  <text x="1120" y="660" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Tek parca kullanici deneyimi</text>
+  <text x="1120" y="696" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Canli metrics ekrani</text>
+  <text x="1120" y="732" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="22">- Docker ile calistirilabilir yapi</text>
+</svg>
