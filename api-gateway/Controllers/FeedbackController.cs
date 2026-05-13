@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using MoodLens.ApiGateway.Data;
 using MoodLens.ApiGateway.DTOs;
 using MoodLens.ApiGateway.Models;
+using MoodLens.ApiGateway.Services;
 
 namespace MoodLens.ApiGateway.Controllers;
 
@@ -12,15 +13,32 @@ namespace MoodLens.ApiGateway.Controllers;
 public class FeedbackController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly GuestAnalysisStore _guestAnalysisStore;
+    private readonly GuestIdentityService _guestIdentityService;
 
-    public FeedbackController(AppDbContext db)
+    public FeedbackController(
+        AppDbContext db,
+        GuestAnalysisStore guestAnalysisStore,
+        GuestIdentityService guestIdentityService
+    )
     {
         _db = db;
+        _guestAnalysisStore = guestAnalysisStore;
+        _guestIdentityService = guestIdentityService;
     }
 
     [HttpGet("{historyId}")]
     public async Task<IActionResult> GetFeedback(Guid historyId, [FromQuery] string? guestSessionId = null)
     {
+        var userId = GetUserId();
+        if (userId == null)
+        {
+            var actorKey = _guestIdentityService.ResolveActorKey(HttpContext);
+            return _guestAnalysisStore.TryGetFeedback(historyId, actorKey, ResolveGuestSessionId(guestSessionId), out var guestFeedback)
+                ? Ok(guestFeedback)
+                : NotFound(new { message = "Feedback has not been submitted yet." });
+        }
+
         var history = await ResolveAccessibleHistoryAsync(historyId, guestSessionId);
         if (history == null)
         {
@@ -57,13 +75,33 @@ public class FeedbackController : ControllerBase
             });
         }
 
+        var userId = GetUserId();
+        if (userId == null)
+        {
+            var actorKey = _guestIdentityService.ResolveActorKey(HttpContext);
+            if (!_guestAnalysisStore.TryUpsertFeedback(
+                    historyId,
+                    actorKey,
+                    ResolveGuestSessionId(guestSessionId),
+                    request,
+                    out var guestFeedback))
+            {
+                return NotFound(new { message = "Guest result expired or cannot accept feedback." });
+            }
+
+            return Ok(new
+            {
+                message = "Feedback saved successfully.",
+                feedback = guestFeedback
+            });
+        }
+
         var history = await ResolveAccessibleHistoryAsync(historyId, guestSessionId);
         if (history == null)
         {
             return NotFound(new { message = "History item not found or cannot accept feedback." });
         }
 
-        var userId = GetUserId();
         var resolvedGuestSessionId = userId == null ? ResolveGuestSessionId(guestSessionId) : null;
 
         var feedback = await _db.AnalysisFeedback

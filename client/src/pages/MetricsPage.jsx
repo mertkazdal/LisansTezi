@@ -196,7 +196,7 @@ export default function MetricsPage() {
   ];
 
   return (
-    <div className="page-shell">
+    <div className="page-shell aurora-bg app-page-tone metrics-page">
       <div className="mx-auto max-w-7xl space-y-8">
         <DashboardHero
           t={t}
@@ -356,7 +356,7 @@ function DashboardHero({ t, totalAnalyses, totalFeedback, averageConfidence }) {
       initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, ease: "easeOut" }}
-      className="premium-card relative overflow-hidden p-6 sm:p-8 lg:p-10"
+      className="surface-panel-strong relative overflow-hidden p-6 sm:p-8 lg:p-10"
     >
       <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/15 blur-3xl" />
       <div className="absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-indigo-400/12 blur-3xl" />
@@ -372,7 +372,7 @@ function DashboardHero({ t, totalAnalyses, totalFeedback, averageConfidence }) {
           </p>
         </div>
 
-        <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5">
+        <div className="surface-panel rounded-[1.7rem] p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100/70">{t("metrics.heroPulse")}</p>
@@ -418,7 +418,7 @@ function MiniHeroStat({ label, value }) {
 function DashboardNotice({ totalAnalyses, t }) {
   const hasData = toNumber(totalAnalyses) > 0;
   return (
-    <div className="premium-card border-cyan-200/20 p-5 text-sm leading-6 text-slate-300">
+    <div className="surface-panel-strong border-cyan-200/20 p-5 text-sm leading-6 text-slate-300">
       {hasData
         ? t("metrics.noticeWithData")
         : t("metrics.noticeEmpty")}
@@ -485,7 +485,7 @@ function QualityCard({ item, accentColor, t }) {
 
 function Panel({ title, description, children }) {
   return (
-    <section className="premium-card p-6">
+    <section className="surface-panel-strong p-6">
       <h2 className="text-xl font-black text-white">{title}</h2>
       {description && <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>}
       <div className={description ? "mt-5" : "mt-4"}>{children}</div>
@@ -618,7 +618,7 @@ function EmptyState({ text }) {
 
 function MetricsLoading({ t }) {
   return (
-    <div className="page-shell flex items-center justify-center">
+    <div className="page-shell aurora-bg app-page-tone metrics-page flex items-center justify-center">
       <div className="premium-card w-full max-w-md px-8 py-8 text-center text-slate-300">
         <span className="orb mx-auto h-14 w-14" aria-hidden="true">
           <span className="relative z-10 h-3 w-3 rounded-full bg-cyan-100" />
@@ -645,7 +645,7 @@ function ChartsFallback({ t }) {
 
 function MetricsAccessState({ title, description, primaryLabel, primaryTo, secondaryLabel, secondaryTo }) {
   return (
-    <div className="page-shell flex items-center justify-center">
+    <div className="page-shell aurora-bg app-page-tone metrics-page flex items-center justify-center">
       <div className="premium-card w-full max-w-2xl p-8 text-center">
         <p className="section-eyebrow mx-auto w-fit">Admin</p>
         <h1 className="mt-6 text-3xl font-black text-white">{title}</h1>
@@ -665,7 +665,7 @@ function MetricsAccessState({ title, description, primaryLabel, primaryTo, secon
 
 function MetricsErrorState({ error, t }) {
   return (
-    <div className="page-shell flex items-center justify-center">
+    <div className="page-shell aurora-bg app-page-tone metrics-page flex items-center justify-center">
       <div className="premium-card w-full max-w-2xl p-8 text-center">
         <p className="section-eyebrow mx-auto w-fit">{t("states.error")}</p>
         <h1 className="mt-6 text-3xl font-black text-white">{t("metrics.errorTitle")}</h1>

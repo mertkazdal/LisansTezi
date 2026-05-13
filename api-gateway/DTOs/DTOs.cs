@@ -7,6 +7,30 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string? GuestSessionId { get; set; }
+    public RecommendationSurveyRequest? RecommendationSurvey { get; set; }
+}
+
+public class RecommendationSurveyRequest
+{
+    public string RecommendationGoal { get; set; } = string.Empty;
+    public string EnergyPreference { get; set; } = string.Empty;
+    public List<string> MusicGenres { get; set; } = new();
+    public List<string> MovieGenres { get; set; } = new();
+    public List<string> BookGenres { get; set; } = new();
+}
+
+public class RecommendationSurveyResponse
+{
+    public string RecommendationGoal { get; set; } = string.Empty;
+    public string EnergyPreference { get; set; } = string.Empty;
+    public List<string> MusicGenres { get; set; } = new();
+    public List<string> MovieGenres { get; set; } = new();
+    public List<string> BookGenres { get; set; } = new();
+}
+
+public class PersonalitySurveySubmitRequest
+{
+    public Dictionary<int, int> Answers { get; set; } = new();
 }
 
 public class LoginRequest
@@ -26,6 +50,8 @@ public class AuthResponse
     public bool IsAdmin { get; set; }
     public bool GuestDataMerged { get; set; }
     public int MigratedGuestAnalysesCount { get; set; }
+    public RecommendationSurveyResponse? RecommendationSurvey { get; set; }
+    public string PreferredColorTheme { get; set; } = "kirmizi";
 }
 
 // --- Analyze DTOs ---
@@ -35,6 +61,7 @@ public class AnalyzeRequest
     public string? Text { get; set; }
     public string? MimeType { get; set; }
     public string? GuestSessionId { get; set; }
+    public RecommendationSurveyRequest? RecommendationSurvey { get; set; }
 }
 
 public class AnalyzeResponse
@@ -52,6 +79,7 @@ public class AnalyzeResponse
     public bool FaceDetected { get; set; }
     public int? GuestRemainingAnalyses { get; set; }
     public string? Warning { get; set; }
+    public bool AskAvatarRefresh { get; set; }
 }
 
 // --- Recommendation DTOs ---
@@ -101,6 +129,30 @@ public class HistoryItemResponse
     public bool FaceDetected { get; set; }
 }
 
+public class AnalysisRecordResponse
+{
+    public Guid Id { get; set; }
+    public string Status { get; set; } = "complete";
+    public string InputType { get; set; } = "text";
+    public string EmotionResult { get; set; } = string.Empty;
+    public double EmotionConfidence { get; set; }
+    public string? ImageEmotion { get; set; }
+    public double? ImageConfidence { get; set; }
+    public string? TextEmotion { get; set; }
+    public double? TextConfidence { get; set; }
+    public bool ConflictDetected { get; set; }
+    public object? Recommendations { get; set; }
+    public string Language { get; set; } = "tr";
+    public DateTime CreatedAt { get; set; }
+}
+
+public class MediaLogRequest
+{
+    public string Type { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Note { get; set; }
+}
+
 // --- User Profile DTOs ---
 public class UserProfileResponse
 {
@@ -115,9 +167,16 @@ public class UserProfileResponse
     public bool IsAdmin { get; set; }
     public bool CanDeleteAccount { get; set; } = true;
     public string DeleteConfirmationText { get; set; } = "DELETE";
+    public RecommendationSurveyResponse? RecommendationSurvey { get; set; }
+    public string PreferredColorTheme { get; set; } = "kirmizi";
 }
 
 public class DeleteAccountRequest
 {
     public string ConfirmationText { get; set; } = string.Empty;
+}
+
+public class UpdateColorThemeRequest
+{
+    public string ColorTheme { get; set; } = string.Empty;
 }

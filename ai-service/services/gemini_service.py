@@ -1,10 +1,13 @@
-import asyncio
+﻿import asyncio
+import base64
 import json
 import os
 import re
+import urllib.parse
 from typing import Any
 
 import google.generativeai as genai
+import httpx
 from dotenv import load_dotenv
 from services.emotion_catalog import (
     NEGATIVE_EMOTIONS,
@@ -14,7 +17,6 @@ from services.emotion_catalog import (
     VALID_EMOTIONS,
     normalize_emotion_key,
 )
-from services.local_face_emotion_service import LocalFaceEmotionError, analyze_face_emotion
 from services.recommendation_runtime import AsyncTTLCache, build_cache_key, compact_context
 
 load_dotenv()
@@ -70,7 +72,9 @@ DEFAULT_REASON_PROMPTS = {
 }
 GEMINI_LOCK = asyncio.Lock()
 LIFE_ADVICE_CACHE = AsyncTTLCache(ttl_seconds=1800, max_entries=256)
+RECOMMENDATION_QUERY_CACHE = AsyncTTLCache(ttl_seconds=1800, max_entries=256)
 VALID_EMOTION_PROMPT = ", ".join(VALID_EMOTIONS)
+AVATAR_IMAGE_MODELS = ("gemini-2.5-flash-image", "gemini-2.0-flash")
 
 
 class GeminiServiceError(Exception):
@@ -508,11 +512,173 @@ async def _generate_content(
             raise _map_gemini_exception(exc, language, operation) from exc
 
 
+def _read_response_text(response: Any, language: str) -> str:
+    try:
+        response_text = response.text or ""
+    except ValueError as exc:
+        raise GeminiServiceError(
+            _invalid_response_message(language),
+            502,
+            "AI_BLOCKED_RESPONSE",
+        ) from exc
+
+    normalized_text = str(response_text).strip()
+    if normalized_text:
+        return normalized_text
+
+    raise GeminiServiceError(
+        _invalid_response_message(language),
+        502,
+        "AI_INVALID_RESPONSE",
+    )
+
+
+def _analysis_explanation(language: str, mode: str, emotion: str) -> str:
+    if language == "tr":
+        if mode == "image":
+            return f"Gorsel sinyal analiz edildi ve baskin duygu {emotion} olarak siniflandirildi."
+        if mode == "text":
+            return f"Metin analiz edildi ve baskin duygu {emotion} olarak siniflandirildi."
+        return f"Metin ve gorsel sinyal birlikte degerlendirildi; baskin duygu {emotion}."
+
+    if mode == "image":
+        return f"The visual signal was analyzed and classified as {emotion}."
+    if mode == "text":
+        return f"The text was analyzed and classified as {emotion}."
+    return f"The text and visual signals were evaluated together; the dominant emotion is {emotion}."
+
+
+async def _try_local_face_emotion(
+    image_base64: str,
+    mime_type: str | None,
+    language: str,
+) -> dict | None:
+    if os.getenv("IMAGE_EMOTION_PROVIDER", "gemini").strip().lower() != "local":
+        return None
+
+    try:
+        from services.local_face_emotion_service import analyze_face_emotion
+
+        return await asyncio.to_thread(
+            analyze_face_emotion,
+            image_base64,
+            mime_type,
+            language,
+        )
+    except Exception as exc:
+        print(f"Local face emotion model unavailable, falling back to Gemini vision: {exc}")
+        return None
+
+
+async def _analyze_image_signal(
+    image_base64: str,
+    mime_type: str | None,
+    language: str,
+) -> dict:
+    local_result = await _try_local_face_emotion(image_base64, mime_type, language)
+    if local_result:
+        return local_result
+
+    normalized_language = _normalize_language(language)
+    image_bytes = base64.b64decode(image_base64, validate=True)
+    normalized_mime = mime_type or "image/jpeg"
+    language_name = _response_language_name(normalized_language)
+    prompt = f"""
+Analyze the user's facial emotion from this validated single-face image.
+Classify into exactly one of these emotions:
+{VALID_EMOTION_PROMPT}
+
+Return ONLY valid JSON:
+{{"emotion": "...", "confidence": 0.0-1.0, "reasoning": "brief internal note"}}
+
+Respond in {language_name}.
+""".strip()
+
+    response = await _generate_content(
+        [prompt, {"mime_type": normalized_mime, "data": image_bytes}],
+        normalized_language,
+        "image-analysis",
+        api_key_env="GEMINI_API_KEY",
+        fallback_api_key_env="GEMINI_KEY_TEXT_EMOTION",
+    )
+    response_text = _read_response_text(response, normalized_language)
+
+    try:
+        result = _extract_json_payload(response_text)
+    except json.JSONDecodeError as exc:
+        raise GeminiServiceError(
+            "Gemini returned an invalid image analysis response.",
+            502,
+            "AI_INVALID_RESPONSE",
+        ) from exc
+
+    emotion = _normalize_emotion(result.get("emotion"), "calm") or "calm"
+    confidence = _normalize_score(result.get("confidence", 0.55), 0.55)
+    return {
+        "emotion": emotion,
+        "confidence": confidence,
+        "explanation": _analysis_explanation(normalized_language, "image", emotion),
+        "raw_emotion": emotion,
+    }
+
+
+async def _resolve_conflict_signal(
+    image_emotion: str,
+    image_confidence: float,
+    text_emotion: str,
+    text_confidence: float,
+    personality_json: str | None,
+    language: str,
+    api_key_env: str,
+) -> dict:
+    prompt = f"""
+Two emotion signals conflict. Image analysis shows {image_emotion} ({image_confidence}). Text analysis shows {text_emotion} ({text_confidence}). User personality: {personality_json or "{}"}. Determine which signal is more authentic and why. Return ONLY JSON: {{"resolved_emotion": "...", "resolved_confidence": 0.0-1.0, "conflict_note": "...", "is_true_conflict": bool}}
+""".strip()
+
+    response = await _generate_content(
+        prompt,
+        language,
+        "conflict-resolution",
+        api_key_env=api_key_env,
+        fallback_api_key_env="GEMINI_API_KEY",
+    )
+    response_text = _read_response_text(response, language)
+
+    try:
+        result = _extract_json_payload(response_text)
+    except json.JSONDecodeError as exc:
+        raise GeminiServiceError(
+            "Gemini returned an invalid conflict response.",
+            502,
+            "AI_INVALID_RESPONSE",
+        ) from exc
+
+    resolved_emotion = _normalize_emotion(result.get("resolved_emotion"), text_emotion) or text_emotion
+    resolved_confidence = _normalize_score(
+        result.get("resolved_confidence", max(image_confidence, text_confidence)),
+        max(image_confidence, text_confidence),
+    )
+    return {
+        "resolved_emotion": resolved_emotion,
+        "resolved_confidence": resolved_confidence,
+        "conflict_note": str(result.get("conflict_note") or "").strip(),
+        "is_true_conflict": bool(result.get("is_true_conflict", False)),
+    }
+
+
+def _resolve_conflict_key_env(analysis_key_env: str | None) -> str:
+    candidate = (analysis_key_env or "").strip()
+    if candidate in {"GEMINI_KEY_CONFLICT_1", "GEMINI_KEY_CONFLICT_2", "GEMINI_KEY_CONFLICT_3"}:
+        return candidate
+    return "GEMINI_KEY_CONFLICT_1"
+
+
 async def analyze_emotion(
     image_base64: str | None = None,
     user_text: str | None = None,
     mime_type: str | None = "image/jpeg",
     language: str = "en",
+    analysis_key_env: str | None = None,
 ) -> dict:
     normalized_language = _normalize_language(language)
     cleaned_text = (user_text or "").strip()
@@ -532,50 +698,72 @@ async def analyze_emotion(
     face_result = None
     if has_image:
         try:
-            face_result = await asyncio.to_thread(
-                analyze_face_emotion,
+            face_result = await _analyze_image_signal(
                 cleaned_image,
                 mime_type,
                 normalized_language,
             )
-        except LocalFaceEmotionError as exc:
+        except GeminiServiceError:
+            raise
+        except Exception as exc:
             if not has_text:
-                raise GeminiServiceError(exc.message, exc.status_code, exc.code) from exc
-
+                raise GeminiServiceError(
+                    _image_processing_error_message(normalized_language),
+                    400,
+                    "IMAGE_UNPROCESSABLE",
+                ) from exc
             warning = _image_fallback_warning(normalized_language)
             image_fallback_used = True
 
-    text_result = await _analyze_text_signal(
-        cleaned_text,
-        normalized_language,
-        face_result,
-    ) if has_text else None
+    text_result = await _analyze_text_signal(cleaned_text, normalized_language) if has_text else None
 
     if has_image and has_text:
-        final_result = text_result or face_result or _normalize_simple_analysis_result({}, normalized_language, "combined")
         face_emotion = face_result["emotion"] if face_result else None
         face_confidence = face_result["confidence"] if face_result else None
-        text_emotion = final_result.get("text_emotion") or final_result["emotion"]
-        text_confidence = final_result.get("text_confidence") or final_result["confidence"]
+        text_emotion = text_result["emotion"] if text_result else "calm"
+        text_confidence = text_result["confidence"] if text_result else 0.0
         contradiction_detected = _is_strong_contradiction(
             face_emotion,
             float(face_confidence or 0.0),
             text_emotion,
             float(text_confidence or 0.0),
         )
-        clarification_message = _default_clarification(normalized_language) if contradiction_detected else ""
-        warning = _merge_warning_messages(warning, clarification_message)
+        clarification_message = ""
+        conflict_note = ""
+        final_emotion = text_emotion
+        final_confidence = float(text_confidence or 0.0)
+
+        if contradiction_detected and face_result:
+            resolution = await _resolve_conflict_signal(
+                face_emotion or "calm",
+                float(face_confidence or 0.0),
+                text_emotion,
+                float(text_confidence or 0.0),
+                None,
+                normalized_language,
+                _resolve_conflict_key_env(analysis_key_env),
+            )
+            final_emotion = resolution["resolved_emotion"]
+            final_confidence = resolution["resolved_confidence"]
+            conflict_note = resolution["conflict_note"]
+            contradiction_detected = bool(resolution["is_true_conflict"])
+            clarification_message = _default_clarification(normalized_language) if contradiction_detected else conflict_note
+            warning = _merge_warning_messages(warning, clarification_message if contradiction_detected else None)
+        elif face_result and float(face_confidence or 0.0) > final_confidence:
+            final_emotion = face_emotion or final_emotion
+            final_confidence = float(face_confidence or final_confidence)
 
         return {
-            "emotion": final_result["emotion"],
-            "confidence": final_result["confidence"],
-            "explanation": final_result["explanation"],
+            "emotion": final_emotion,
+            "confidence": final_confidence,
+            "explanation": _analysis_explanation(normalized_language, "combined", final_emotion),
             "face_emotion": face_emotion,
             "face_confidence": face_confidence,
             "text_emotion": text_emotion,
             "text_confidence": text_confidence,
             "contradiction_detected": contradiction_detected,
             "clarification_message": clarification_message,
+            "conflict_note": conflict_note,
             "reason_provided": True,
             "needs_reason": False,
             "follow_up_question": "",
@@ -584,7 +772,13 @@ async def analyze_emotion(
         }
 
     if has_image:
-        final_result = face_result or _normalize_simple_analysis_result({}, normalized_language, "image")
+        if not face_result:
+            raise GeminiServiceError(
+                _provider_error_message(normalized_language, "image-analysis"),
+                502,
+                "AI_INVALID_RESPONSE",
+            )
+        final_result = face_result
         return {
             "emotion": final_result["emotion"],
             "confidence": final_result["confidence"],
@@ -602,7 +796,14 @@ async def analyze_emotion(
             "image_fallback_used": image_fallback_used,
         }
 
-    final_result = text_result or _normalize_simple_analysis_result({}, normalized_language, "text")
+    if not text_result:
+        raise GeminiServiceError(
+            _provider_error_message(normalized_language, "text-analysis"),
+            502,
+            "AI_INVALID_RESPONSE",
+        )
+
+    final_result = text_result
     return {
         "emotion": final_result["emotion"],
         "confidence": final_result["confidence"],
@@ -627,47 +828,22 @@ async def _analyze_text_signal(
     face_context: dict | None = None,
 ) -> dict:
     language_name = _response_language_name(language)
-    image_context_block = ""
-    if face_context:
-        image_context_block = (
-            f'The selfie was analyzed locally and classified as "{face_context["emotion"]}" '
-            f'with confidence {face_context["confidence"]:.2f}. '
-            "Use that as supporting context while determining the final emotion from the text plus selfie signal.\n"
-        )
+    del face_context
 
     prompt = f"""
-You are an emotion detection expert for journal-style user text.
-
-User text:
-"{user_text}"
-
-{image_context_block}
-Choose exactly one emotion from this list:
+Analyze the emotional state of this text. Classify into exactly one of these emotions:
 {VALID_EMOTION_PROMPT}
-
-Rules:
-- First classify the emotion conveyed by the text alone and return it as text_emotion.
-- If selfie context is provided, then combine the selfie context with the text and return the final combined emotion as emotion.
-- If no selfie context is provided, emotion and text_emotion should be the same, and confidence and text_confidence should be the same.
-- The final answer should reflect the whole picture, not a blind copy of the selfie signal.
-- Return confidence as a number between 0.0 and 1.0.
-- Write the explanation in {language_name}.
-- Respond with valid JSON only.
-
-JSON format:
-{{
-  "text_emotion": "...",
-  "text_confidence": 0.0,
-  "emotion": "...",
-  "confidence": 0.0,
-  "explanation": "..."
-}}
-"""
+Return ONLY valid JSON: {{"emotion": "...", "confidence": 0.0-1.0, "reasoning": "..."}}
+Text: {user_text}
+Respond in {language_name}.
+""".strip()
 
     response = await _generate_content(
         prompt,
         language,
         "text-analysis",
+        api_key_env="GEMINI_KEY_TEXT_EMOTION",
+        fallback_api_key_env="GEMINI_API_KEY",
     )
     response_text = getattr(response, "text", "").strip()
     if not response_text:
@@ -689,18 +865,12 @@ JSON format:
     normalized_result = _normalize_simple_analysis_result(
         result,
         language,
-        "combined" if face_context else "text",
-        face_context["emotion"] if face_context else "calm",
+        "text",
+        "calm",
     )
 
-    text_emotion = _normalize_emotion(result.get("text_emotion"), normalized_result["emotion"]) or normalized_result["emotion"]
-    text_confidence = _normalize_score(
-        result.get("text_confidence", normalized_result["confidence"]),
-        normalized_result["confidence"],
-    )
-
-    normalized_result["text_emotion"] = text_emotion
-    normalized_result["text_confidence"] = text_confidence
+    normalized_result["text_emotion"] = normalized_result["emotion"]
+    normalized_result["text_confidence"] = normalized_result["confidence"]
     return normalized_result
 
 
@@ -797,3 +967,311 @@ For "icon", use one of these emoji: ğŸŒŸ, ğŸ’ª, ğŸ§˜, ğŸŒˆ, ğ�
     except Exception as exc:
         print(f"Gemini life advice error: {exc}")
         return stale_advice or _default_life_advice(normalized_language)
+
+
+def _default_coach_comment(emotion: str, language: str, context: str | None = None) -> str:
+    has_context = bool((context or "").strip())
+    if _normalize_language(language) == "tr":
+        if has_context:
+            return (
+                f"Baskin duygu {emotion}. Bu sonucu sert bir etiket gibi degil, "
+                "bugunku ritmini ayarlamana yardim eden bir sinyal gibi kullan."
+            )
+        return f"Baskin duygu {emotion}. Kendine kucuk, uygulanabilir ve sakin bir sonraki adim sec."
+
+    if has_context:
+        return (
+            f"The dominant emotion looks like {emotion}. Treat it as a signal for adjusting today's pace, "
+            "not as a hard label."
+        )
+    return f"The dominant emotion looks like {emotion}. Choose one small, realistic next step that supports you."
+
+
+def _normalize_query_list(value: Any, fallback: list[str], limit: int = 3) -> list[str]:
+    if not isinstance(value, list):
+        return fallback[:limit]
+
+    normalized = [
+        str(item).strip()
+        for item in value
+        if isinstance(item, str) and str(item).strip()
+    ]
+    return (normalized or fallback)[:limit]
+
+
+def _activities_to_advice(activities: list[str]) -> list[dict]:
+    return [
+        {
+            "title": activity[:64],
+            "description": activity,
+            "icon": "AI",
+        }
+        for activity in activities[:5]
+    ]
+
+
+async def generate_recommendation_queries(
+    emotion: str,
+    context: str | None = None,
+    language: str = "en",
+    prefer_followup_key: bool = False,
+) -> dict:
+    normalized_language = _normalize_language(language)
+    normalized_emotion = normalize_emotion_key(emotion, "calm")
+    compacted_context = compact_context(context, max_chars=600)
+    cache_key = build_cache_key(
+        "recommendation-queries",
+        {
+            "emotion": normalized_emotion,
+            "context": compacted_context,
+            "language": normalized_language,
+            "prefer_followup_key": bool(prefer_followup_key),
+        },
+    )
+    cached = await RECOMMENDATION_QUERY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    language_name = _response_language_name(normalized_language)
+    prompt = f"""
+You are a personalized wellbeing coach. User's current emotional state: {normalized_emotion}. User personality profile and context: {compacted_context or "{}"}.
+Recommend content that is 70% driven by emotion and 30% by personality.
+Return ONLY valid JSON in {language_name}:
+{{
+"music_queries": ["search query 1", "search query 2", "search query 3"],
+"film_queries": ["query 1", "query 2", "query 3"],
+"book_queries": ["query 1", "query 2", "query 3"],
+"activities": ["activity 1", "activity 2", "activity 3", "activity 4", "activity 5"],
+"coach_advice": "2-3 sentence empathetic assessment and guidance in {language_name}"
+}}
+""".strip()
+
+    fallback = {
+        "music_queries": [f"{normalized_emotion} mood music", f"{normalized_emotion} playlist", "gentle wellbeing songs"],
+        "film_queries": [f"{normalized_emotion} film", "uplifting drama", "comfort movie"],
+        "book_queries": [f"{normalized_emotion} self help", "mindfulness book", "emotional wellbeing"],
+        "activities": [
+            "Take a short breathing break.",
+            "Drink water and reset your posture.",
+            "Write one sentence about what you need.",
+            "Take a brief walk if possible.",
+            "Choose one small task and finish it gently.",
+        ],
+        "coach_advice": _default_coach_comment(normalized_emotion, normalized_language, compacted_context),
+    }
+
+    api_key_env = "GEMINI_KEY_RECOMMENDATIONS" if prefer_followup_key else "GEMINI_KEY_COACH"
+    try:
+        response = await _generate_content(
+            prompt,
+            normalized_language,
+            "recommendation-queries",
+            api_key_env=api_key_env,
+            fallback_api_key_env="GEMINI_API_KEY",
+        )
+        result = _extract_json_payload(_read_response_text(response, normalized_language))
+        payload = {
+            "music_queries": _normalize_query_list(result.get("music_queries"), fallback["music_queries"]),
+            "film_queries": _normalize_query_list(result.get("film_queries"), fallback["film_queries"]),
+            "book_queries": _normalize_query_list(result.get("book_queries"), fallback["book_queries"]),
+            "activities": _normalize_query_list(result.get("activities"), fallback["activities"], limit=5),
+            "coach_advice": str(result.get("coach_advice") or fallback["coach_advice"]).strip(),
+        }
+        await RECOMMENDATION_QUERY_CACHE.set(cache_key, payload)
+        return payload
+    except Exception as exc:
+        print(f"Gemini recommendation query error: {exc}")
+        return fallback
+
+
+async def generate_followup_bundle(
+    emotion: str,
+    context: str | None = None,
+    language: str = "en",
+    prefer_followup_key: bool = False,
+) -> dict:
+    query_bundle = await generate_recommendation_queries(
+        emotion,
+        context,
+        language,
+        prefer_followup_key,
+    )
+    return {
+        "coach_comment": query_bundle["coach_advice"],
+        "advice": _activities_to_advice(query_bundle["activities"]),
+        "queries": query_bundle,
+    }
+
+
+def _read_big_five_score(big_five: dict | None, key: str) -> float | None:
+    if not isinstance(big_five, dict):
+        return None
+
+    value = big_five.get(key)
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+
+    if isinstance(value, dict):
+        for candidate in ("score", "value", "normalized"):
+            nested = value.get(candidate)
+            if isinstance(nested, (int, float)):
+                return max(0.0, min(1.0, float(nested)))
+
+    return None
+
+
+def _fallback_avatar_prompt(
+    big_five: dict | None,
+    mbti_type: str | None,
+    dominant_emotion: str | None,
+) -> str:
+    trait_labels = []
+    trait_map = {
+        "openness": "open and imaginative",
+        "conscientiousness": "organized and purposeful",
+        "extraversion": "warm and socially energetic",
+        "agreeableness": "kind and cooperative",
+        "neuroticism": "sensitive and emotionally reflective",
+    }
+    for key, label in trait_map.items():
+        score = _read_big_five_score(big_five, key)
+        if score is not None and score >= 0.6:
+            trait_labels.append(label)
+
+    traits = ", ".join(trait_labels) if trait_labels else "balanced, expressive, emotionally aware"
+    emotion = normalize_emotion_key(dominant_emotion, "calm")
+    mbti = f" with {str(mbti_type).strip().upper()} energy" if str(mbti_type or "").strip() else ""
+    return (
+        f"A friendly cartoon character with warm colors, curious eyes, creative accessories, "
+        f"representing a {traits} personality{mbti} feeling {emotion}. "
+        "Flat illustration style, soft background, no text."
+    )
+
+
+async def generate_avatar_prompt(
+    big_five: dict | None,
+    mbti_type: str | None,
+    dominant_emotion: str | None,
+) -> str:
+    fallback_prompt = _fallback_avatar_prompt(big_five, mbti_type, dominant_emotion)
+    try:
+        prompt = f"""
+Create one concise English image-generation prompt for a personality avatar.
+The avatar must be a friendly cartoon character, not a real person.
+Use the user's Big Five scores and current dominant emotion.
+Big Five JSON: {json.dumps(big_five or {}, ensure_ascii=False)}
+MBTI type: {mbti_type or "unknown"}
+Dominant emotion from recent analyses: {normalize_emotion_key(dominant_emotion, "calm")}
+
+Requirements:
+- Mention personality traits implied by the scores.
+- Mention the dominant emotion.
+- Flat illustration style, soft background, no text.
+- Return only the image prompt, no markdown and no JSON.
+""".strip()
+        response = await _generate_content(
+            prompt,
+            "en",
+            "avatar-prompt",
+            api_key_env="GEMINI_KEY_RECOMMENDATIONS",
+            fallback_api_key_env="GEMINI_API_KEY",
+        )
+        generated_prompt = _read_response_text(response, "en").strip().strip('"')
+        if generated_prompt:
+            return generated_prompt[:1200]
+    except Exception as exc:
+        print(f"Gemini avatar prompt fallback warning: {exc}")
+
+    return fallback_prompt
+
+
+def _pollinations_avatar_url(prompt: str) -> str:
+    encoded_prompt = urllib.parse.quote(prompt)
+    return f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
+
+
+def _extract_inline_image_data(payload: dict) -> str:
+    candidates = payload.get("candidates") if isinstance(payload, dict) else None
+    if not isinstance(candidates, list):
+        raise GeminiServiceError("Gemini returned no avatar candidates.", 502, "AI_INVALID_RESPONSE")
+
+    for candidate in candidates:
+        content = candidate.get("content") if isinstance(candidate, dict) else None
+        parts = content.get("parts") if isinstance(content, dict) else None
+        if not isinstance(parts, list):
+            continue
+
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+
+            inline_data = part.get("inlineData") or part.get("inline_data")
+            if not isinstance(inline_data, dict):
+                continue
+
+            image_data = inline_data.get("data")
+            if not image_data:
+                continue
+
+            mime_type = inline_data.get("mimeType") or inline_data.get("mime_type") or "image/png"
+            return f"data:{mime_type};base64,{image_data}"
+
+    raise GeminiServiceError("Gemini returned no inline avatar image.", 502, "AI_INVALID_RESPONSE")
+
+
+def _looks_model_unavailable(status_code: int, body: str) -> bool:
+    lowered = body.lower()
+    return status_code in {400, 404} and any(
+        token in lowered
+        for token in ("not found", "not supported", "unavailable", "unknown model")
+    )
+
+
+async def _generate_gemini_avatar_image(prompt: str) -> str:
+    api_key = os.getenv("GEMINI_KEY_AVATAR", "").strip()
+    if not api_key:
+        raise GeminiServiceError("Gemini avatar key is not configured.", 500, "AI_CONFIG_ERROR")
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"responseModalities": ["IMAGE"]},
+    }
+
+    last_error: str | None = None
+    async with httpx.AsyncClient(timeout=90) as client:
+        for model_name in AVATAR_IMAGE_MODELS:
+            response = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
+                params={"key": api_key},
+                json=payload,
+            )
+
+            if response.is_success:
+                return _extract_inline_image_data(response.json())
+
+            body = response.text
+            last_error = body
+            if model_name == AVATAR_IMAGE_MODELS[0] and _looks_model_unavailable(response.status_code, body):
+                continue
+
+            raise GeminiServiceError("Gemini avatar generation failed.", response.status_code, "AI_PROVIDER_ERROR")
+
+    raise GeminiServiceError(last_error or "Gemini avatar generation failed.", 502, "AI_PROVIDER_ERROR")
+
+
+async def generate_personality_avatar(
+    big_five: dict | None,
+    mbti_type: str | None,
+    dominant_emotion: str | None,
+) -> dict:
+    prompt = await generate_avatar_prompt(big_five, mbti_type, dominant_emotion)
+    try:
+        avatar_url = await _generate_gemini_avatar_image(prompt)
+    except Exception as exc:
+        print(f"Gemini avatar image fallback warning: {exc}")
+        avatar_url = _pollinations_avatar_url(prompt)
+
+    return {
+        "avatar_url": avatar_url,
+        "cached": False,
+    }

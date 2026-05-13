@@ -1,0 +1,504 @@
+.overlay {
+  --survey-bg: color-mix(in srgb, var(--theme-surface) 92%, #000000 8%);
+  --survey-card: color-mix(in srgb, var(--theme-surface-alt) 84%, var(--theme-accent) 8%);
+  --survey-card-strong: color-mix(in srgb, var(--theme-surface-alt) 78%, var(--theme-primary) 9%);
+  --survey-hover: color-mix(in srgb, var(--theme-surface-alt) 74%, var(--theme-primary) 14%);
+  --survey-accent: var(--theme-primary);
+  --survey-accent-strong: var(--theme-primary-hover);
+  --survey-on-accent: var(--theme-primary-foreground);
+  --survey-text: var(--theme-text);
+  --survey-muted: color-mix(in srgb, var(--theme-text-muted) 84%, var(--theme-text) 16%);
+  --survey-border: color-mix(in srgb, var(--theme-border) 70%, var(--theme-primary) 18%);
+  --survey-shadow: 0 34px 120px var(--theme-shadow);
+
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 18% 12%, rgb(var(--theme-primary-rgb) / 0.28), transparent 25rem),
+    radial-gradient(circle at 84% 8%, color-mix(in srgb, var(--theme-accent) 32%, transparent), transparent 26rem),
+    radial-gradient(circle at 50% 115%, rgb(var(--theme-primary-rgb) / 0.18), transparent 30rem),
+    color-mix(in srgb, var(--survey-bg) 96%, transparent);
+  padding: clamp(0.85rem, 3vw, 2rem);
+  color: var(--survey-text);
+  font-family: var(--font-body, "Inter", "Aptos", "Segoe UI", sans-serif);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+}
+
+.overlay * {
+  box-sizing: border-box;
+}
+
+.shell {
+  position: relative;
+  width: min(100%, 54rem);
+  min-width: 0;
+}
+
+.topRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin: 0 auto 0.9rem;
+}
+
+.closeButton {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  flex: 0 0 auto;
+  width: 2.55rem;
+  height: 2.55rem;
+  place-items: center;
+  border: 1px solid var(--survey-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--survey-card) 88%, transparent);
+  color: var(--survey-text);
+  font-size: 1.45rem;
+  font-weight: 850;
+  line-height: 1;
+  box-shadow: 0 16px 38px rgb(0 0 0 / 0.22);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.closeButton:hover {
+  border-color: color-mix(in srgb, var(--survey-accent) 56%, var(--survey-border));
+  background: var(--survey-hover);
+  transform: translateY(-1px);
+}
+
+.progressWrap {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.6rem;
+  margin: 0;
+  min-width: 0;
+  color: var(--survey-muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-align: right;
+}
+
+.progressTrack {
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid var(--survey-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--survey-card) 76%, transparent);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--survey-accent), var(--survey-accent-strong));
+  box-shadow: 0 0 26px rgb(var(--theme-primary-rgb) / 0.42);
+}
+
+.viewport {
+  position: relative;
+  min-height: min(35rem, calc(100svh - 8rem));
+}
+
+.screen {
+  min-width: 0;
+}
+
+.card {
+  position: relative;
+  min-height: min(35rem, calc(100svh - 8rem));
+  overflow: hidden;
+  border: 1px solid var(--survey-border);
+  border-radius: clamp(1.35rem, 3vw, 2.05rem);
+  background:
+    radial-gradient(circle at 86% 5%, rgb(var(--theme-primary-rgb) / 0.18), transparent 18rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--survey-card-strong) 88%, transparent), color-mix(in srgb, var(--survey-card) 94%, transparent));
+  box-shadow: var(--survey-shadow);
+  padding: clamp(1.1rem, 4vw, 2.3rem);
+}
+
+.card::before {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--survey-text) 10%, transparent) 1px, transparent 0),
+    linear-gradient(color-mix(in srgb, var(--survey-text) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--survey-text) 4%, transparent) 1px, transparent 1px);
+  background-size: 7px 7px, 48px 48px, 48px 48px;
+  opacity: 0.45;
+  mask-image: radial-gradient(circle at 58% 42%, black, transparent 76%);
+}
+
+.card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.centerCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.eyebrow,
+.screenHeader p {
+  margin: 0;
+  width: fit-content;
+  border: 1px solid var(--survey-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  padding: 0.48rem 0.72rem;
+  color: color-mix(in srgb, var(--survey-accent) 58%, var(--survey-text) 42%);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.centerCard .eyebrow,
+.screenHeader p {
+  margin-inline: auto;
+}
+
+.card h1,
+.screenHeader h2 {
+  margin: 0;
+  color: var(--survey-text);
+  font-family: var(--font-display, "Syne", "Aptos Display", "Segoe UI", sans-serif);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+  padding-bottom: 0.08em;
+}
+
+.card h1 {
+  max-width: 38rem;
+  margin-top: 0.75rem;
+  font-size: clamp(2.45rem, 7vw, 4.45rem);
+}
+
+.screenHeader h2 {
+  max-width: 41rem;
+  margin-top: 0.65rem;
+  font-size: clamp(1.8rem, 4.3vw, 3rem);
+}
+
+.lead {
+  max-width: 39rem;
+  margin: 1.15rem auto 0;
+  color: var(--survey-muted);
+  font-size: clamp(0.98rem, 2vw, 1.12rem);
+  line-height: 1.75;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  min-height: 3.2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
+  padding: 0.85rem 1.2rem;
+  font-weight: 950;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.primaryButton {
+  margin-top: 1.55rem;
+  border: 1px solid var(--survey-border);
+  background: var(--survey-accent);
+  color: var(--survey-on-accent);
+  box-shadow: 0 18px 42px rgb(var(--theme-primary-rgb) / 0.28);
+}
+
+.primaryButton:hover:not(:disabled),
+.secondaryButton:hover {
+  transform: translateY(-2px);
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.secondaryButton {
+  border: 1px solid var(--survey-border);
+  background: color-mix(in srgb, var(--survey-card) 78%, transparent);
+  color: var(--survey-text);
+}
+
+.resumeActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.55rem;
+}
+
+.resumeActions .primaryButton,
+.resumeActions .secondaryButton {
+  margin-top: 0;
+}
+
+.screenHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: clamp(1.2rem, 4vw, 2rem);
+}
+
+.screenHeader > div {
+  min-width: 0;
+}
+
+.counter {
+  flex: 0 0 auto;
+  border: 1px solid var(--survey-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--survey-card) 72%, transparent);
+  padding: 0.45rem 0.72rem;
+  color: var(--survey-text);
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+.chipGrid,
+.singleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr));
+  align-items: stretch;
+  gap: 0.78rem;
+}
+
+.scaleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice {
+  display: flex;
+  width: 100%;
+  min-height: 4rem;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.72rem;
+  border: 1px solid var(--survey-border);
+  border-radius: 1.1rem;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--survey-card) 66%, transparent), color-mix(in srgb, var(--survey-card) 50%, transparent));
+  padding: 0.88rem 0.95rem;
+  color: color-mix(in srgb, var(--survey-text) 86%, var(--survey-muted) 14%);
+  font-weight: 850;
+  line-height: 1.3;
+  text-align: left;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.choiceContent {
+  display: block;
+  min-width: 0;
+}
+
+.choiceContent span,
+.choiceContent small {
+  display: block;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.choiceContent small {
+  margin-top: 0.22rem;
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  opacity: 0.78;
+}
+
+.choiceMark {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: 0 0 1.45rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--survey-border) 72%, var(--survey-text) 18%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--survey-card) 72%, transparent);
+  color: var(--survey-text);
+  font-size: 0.8rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.choice:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--survey-accent) 55%, var(--survey-border));
+  background: var(--survey-hover);
+  color: var(--survey-text);
+  transform: translateY(-1px);
+}
+
+.selected {
+  border-color: color-mix(in srgb, var(--survey-accent) 82%, var(--survey-text) 18%);
+  background: linear-gradient(135deg, var(--survey-accent), var(--survey-accent-strong));
+  color: var(--survey-on-accent);
+  box-shadow: 0 16px 36px rgb(var(--theme-primary-rgb) / 0.28);
+}
+
+.selected .choiceMark {
+  border-color: color-mix(in srgb, var(--survey-on-accent) 68%, transparent);
+  background: color-mix(in srgb, var(--survey-on-accent) 18%, transparent);
+  color: var(--survey-on-accent);
+}
+
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  pointer-events: none;
+}
+
+.choiceCard {
+  width: 100%;
+  border-radius: 1.05rem;
+  padding: 1rem;
+}
+
+.navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-top: 0.95rem;
+}
+
+.navigation .primaryButton {
+  margin-top: 0;
+}
+
+.completeMark {
+  display: grid;
+  width: 5rem;
+  height: 5rem;
+  place-items: center;
+  border: 1px solid var(--survey-border);
+  border-radius: 1.25rem;
+  background: var(--survey-accent);
+  color: var(--survey-on-accent);
+  font-size: 1.25rem;
+  font-weight: 950;
+  box-shadow: 0 0 46px rgb(var(--theme-primary-rgb) / 0.28);
+  animation: surveyPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes surveyPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 26px rgb(var(--theme-primary-rgb) / 0.18);
+  }
+
+  50% {
+    box-shadow: 0 0 62px rgb(var(--theme-primary-rgb) / 0.38);
+  }
+}
+
+@media (max-width: 640px) {
+  .topRow {
+    gap: 0.65rem;
+  }
+
+  .overlay {
+    align-items: start;
+    padding: 0.75rem;
+  }
+
+  .viewport,
+  .card {
+    min-height: calc(100svh - 7rem);
+  }
+
+  .screenHeader {
+    flex-direction: column;
+  }
+
+  .screenHeader p {
+    margin-inline: 0;
+  }
+
+  .chipGrid,
+  .singleGrid,
+  .scaleGrid,
+  .cardGrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card h1 {
+    font-size: clamp(2rem, 11vw, 3rem);
+  }
+
+  .screenHeader h2 {
+    font-size: clamp(1.55rem, 9vw, 2.35rem);
+  }
+
+  .choice {
+    width: 100%;
+  }
+
+  .navigation {
+    position: sticky;
+    bottom: 0.7rem;
+    z-index: 2;
+  }
+
+  .closeButton {
+    top: 0.2rem;
+    right: 0.2rem;
+  }
+
+  .navigation .primaryButton,
+  .navigation .secondaryButton,
+  .resumeActions .primaryButton,
+  .resumeActions .secondaryButton {
+    flex: 1 1 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay *,
+  .overlay *::before,
+  .overlay *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}

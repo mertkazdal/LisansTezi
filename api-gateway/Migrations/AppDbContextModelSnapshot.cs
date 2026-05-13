@@ -96,6 +96,123 @@ namespace MoodLens.ApiGateway.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.AnalysisRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<bool>("ConflictDetected")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("conflict_detected");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<double>("EmotionConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("emotion_confidence");
+
+                    b.Property<string>("EmotionResult")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("emotion_result");
+
+                    b.Property<double?>("ImageConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("image_confidence");
+
+                    b.Property<string>("ImageEmotion")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("image_emotion");
+
+                    b.Property<string>("InputType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("input_type");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("tr")
+                        .HasColumnName("language");
+
+                    b.Property<string>("PersonalitySnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("personality_snapshot");
+
+                    b.Property<string>("RecommendationsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("recommendations_json")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("session_id");
+
+                    b.Property<string>("ShareToken")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("share_token");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("complete")
+                        .HasColumnName("status");
+
+                    b.Property<double?>("TextConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("text_confidence");
+
+                    b.Property<string>("TextEmotion")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("text_emotion");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("ShareToken")
+                        .IsUnique()
+                        .HasFilter("\"share_token\" IS NOT NULL");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("analysis_records", t =>
+                        {
+                            t.HasCheckConstraint("CK_analysis_records_emotion_result", "\"emotion_result\" IN ('happy', 'sad', 'angry', 'anxious', 'excited', 'calm', 'tired', 'stressed', 'nostalgic', 'motivated', 'hopeful', 'overwhelmed')");
+
+                            t.HasCheckConstraint("CK_analysis_records_input_type", "\"input_type\" IN ('image', 'text', 'both')");
+
+                            t.HasCheckConstraint("CK_analysis_records_status", "\"status\" IN ('complete', 'partial', 'failed')");
+                        });
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.EmotionHistory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -178,6 +295,39 @@ namespace MoodLens.ApiGateway.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.PersonalityUpdateLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("TriggerSource")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("trigger_source");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("personality_update_logs");
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.Recommendation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -245,10 +395,52 @@ namespace MoodLens.ApiGateway.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("email");
 
+                    b.Property<string>("EnergyPreference")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("energy_preference");
+
+                    b.Property<string>("FavoriteBookGenres")
+                        .HasColumnType("text")
+                        .HasColumnName("favorite_book_genres");
+
+                    b.Property<string>("FavoriteMovieGenres")
+                        .HasColumnType("text")
+                        .HasColumnName("favorite_movie_genres");
+
+                    b.Property<string>("FavoriteMusicGenres")
+                        .HasColumnType("text")
+                        .HasColumnName("favorite_music_genres");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("password_hash");
+
+                    b.Property<string>("PreferredColorTheme")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasDefaultValue("kirmizi")
+                        .HasColumnName("preferred_color_theme");
+
+                    b.Property<string>("RecommendationGoal")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("recommendation_goal");
+
+                    b.Property<string>("SpotifyAccessToken")
+                        .HasColumnType("text")
+                        .HasColumnName("spotify_access_token");
+
+                    b.Property<string>("SpotifyRefreshToken")
+                        .HasColumnType("text")
+                        .HasColumnName("spotify_refresh_token");
+
+                    b.Property<DateTime?>("SpotifyTokenExpiry")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("spotify_token_expiry");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -273,6 +465,116 @@ namespace MoodLens.ApiGateway.Migrations
                     b.ToTable("users");
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.UserMediaLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime>("LoggedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("logged_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoggedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_media_log", t =>
+                        {
+                            t.HasCheckConstraint("CK_user_media_log_type", "\"type\" IN ('film', 'book')");
+                        });
+                });
+
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.UserPersonalityProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime?>("AvatarGeneratedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("avatar_generated_at");
+
+                    b.Property<string>("AvatarUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_url");
+
+                    b.Property<string>("BigFiveJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("big_five_json")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_updated")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("MbtiType")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("mbti_type");
+
+                    b.Property<string>("RawSurveyAnswers")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("raw_survey_answers")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("SpotifyTopTracksJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("spotify_top_tracks_json");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("user_personality_profiles");
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.AnalysisFeedback", b =>
                 {
                     b.HasOne("MoodLens.ApiGateway.Models.EmotionHistory", "EmotionHistory")
@@ -291,12 +593,33 @@ namespace MoodLens.ApiGateway.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.AnalysisRecord", b =>
+                {
+                    b.HasOne("MoodLens.ApiGateway.Models.User", "User")
+                        .WithMany("AnalysisRecords")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.EmotionHistory", b =>
                 {
                     b.HasOne("MoodLens.ApiGateway.Models.User", "User")
                         .WithMany("EmotionHistories")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.PersonalityUpdateLog", b =>
+                {
+                    b.HasOne("MoodLens.ApiGateway.Models.User", "User")
+                        .WithMany("PersonalityUpdateLogs")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });
@@ -312,6 +635,28 @@ namespace MoodLens.ApiGateway.Migrations
                     b.Navigation("EmotionHistory");
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.UserMediaLog", b =>
+                {
+                    b.HasOne("MoodLens.ApiGateway.Models.User", "User")
+                        .WithMany("MediaLogs")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.UserPersonalityProfile", b =>
+                {
+                    b.HasOne("MoodLens.ApiGateway.Models.User", "User")
+                        .WithOne("PersonalityProfile")
+                        .HasForeignKey("MoodLens.ApiGateway.Models.UserPersonalityProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.EmotionHistory", b =>
                 {
                     b.Navigation("FeedbackEntries");
@@ -321,9 +666,17 @@ namespace MoodLens.ApiGateway.Migrations
 
             modelBuilder.Entity("MoodLens.ApiGateway.Models.User", b =>
                 {
+                    b.Navigation("AnalysisRecords");
+
                     b.Navigation("EmotionHistories");
 
                     b.Navigation("FeedbackEntries");
+
+                    b.Navigation("MediaLogs");
+
+                    b.Navigation("PersonalityProfile");
+
+                    b.Navigation("PersonalityUpdateLogs");
                 });
 #pragma warning restore 612, 618
         }

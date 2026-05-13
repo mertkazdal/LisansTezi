@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,48 +16,74 @@ namespace MoodLens.ApiGateway.Controllers;
 public class AnalyzeController : ControllerBase
 {
     private const int GuestAnalysisLimit = 3;
+    private const int DefaultAnalysisCooldownSeconds = 60;
+    private const int FinalAnalysisKeyAttemptIndex = 2;
+    private const string GuestSessionCookieName = "moodlens_guest_session";
 
     private readonly AppDbContext _db;
     private readonly AiServiceClient _aiClient;
+    private readonly AnalysisCooldownService _analysisCooldowns;
+    private readonly GuestAnalysisStore _guestAnalysisStore;
+    private readonly GuestIdentityService _guestIdentityService;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public AnalyzeController(AppDbContext db, AiServiceClient aiClient)
+    public AnalyzeController(
+        AppDbContext db,
+        AiServiceClient aiClient,
+        AnalysisCooldownService analysisCooldowns,
+        GuestAnalysisStore guestAnalysisStore,
+        GuestIdentityService guestIdentityService,
+        IHttpClientFactory httpClientFactory
+    )
     {
         _db = db;
         _aiClient = aiClient;
+        _analysisCooldowns = analysisCooldowns;
+        _guestAnalysisStore = guestAnalysisStore;
+        _guestIdentityService = guestIdentityService;
+        _httpClientFactory = httpClientFactory;
     }
 
     [HttpPost]
     public async Task<IActionResult> Analyze([FromBody] AnalyzeRequest request)
     {
         var userId = GetUserId();
-        var guestSessionId = userId == null ? ResolveGuestSessionId(request.GuestSessionId) : null;
+
+        var language = GetPreferredLanguage();
+        var guestSession = userId == null ? ResolveGuestSessionState(request.GuestSessionId) : null;
+        var guestSessionId = guestSession?.SessionId;
+        var actorKey = userId == null
+            ? $"guest:{guestSessionId}"
+            : ResolveActorKey(userId, null)!;
         var guestUsageCount = 0;
         var hasImage = !string.IsNullOrWhiteSpace(request.ImageBase64);
         var hasText = !string.IsNullOrWhiteSpace(request.Text);
         var normalizedText = request.Text?.Trim() ?? string.Empty;
         var normalizedMimeType = "image/jpeg";
 
-        if (userId == null && string.IsNullOrWhiteSpace(guestSessionId))
-        {
-            return BadRequest(new
-            {
-                message = "Guest session id is required for anonymous analysis.",
-                code = "GUEST_SESSION_REQUIRED"
-            });
-        }
-
         if (userId == null)
         {
-            guestUsageCount = await _db.EmotionHistories.CountAsync(h => h.GuestSessionId == guestSessionId);
+            guestUsageCount = guestSession?.CompletedAnalyses ?? 0;
             if (guestUsageCount >= GuestAnalysisLimit)
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new
                 {
-                    message = "You have used your 3 free analyses. Please sign in to continue.",
+                    message = "You have used your 3 free analyses for this browser session. Please create an account to continue.",
                     code = "GUEST_QUOTA_EXCEEDED",
                     guestRemainingAnalyses = 0
                 });
             }
+        }
+
+        var analysisAttemptIndex = _analysisCooldowns.GetCurrentAttemptIndex(actorKey);
+        if (_analysisCooldowns.TryGetRemainingSeconds(actorKey, out var cooldownRemainingSeconds))
+        {
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                message = BuildCooldownMessage(language, cooldownRemainingSeconds),
+                code = "ANALYSIS_COOLDOWN_ACTIVE",
+                retryAfterSeconds = cooldownRemainingSeconds
+            });
         }
 
         if (!hasImage && !hasText)
@@ -72,20 +99,82 @@ public class AnalyzeController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Unsupported image format. Supported formats are JPEG, JPG, PNG, WebP, HEIC, and HEIF.",
+                message = "Unsupported image format. Supported formats are JPEG, JPG, PNG, and WebP.",
                 code = "UNSUPPORTED_IMAGE_MIME_TYPE"
+            });
+        }
+
+        if (hasText && normalizedText.Length is < 10 or > 1000)
+        {
+            return BadRequest(new
+            {
+                message = "Text input must be between 10 and 1000 characters.",
+                code = "INVALID_TEXT_LENGTH"
+            });
+        }
+
+        if (hasImage)
+        {
+            try
+            {
+                await _aiClient.ValidateImageAsync(request.ImageBase64!, normalizedMimeType, language);
+            }
+            catch (AiServiceException ex)
+            {
+                var statusCode = ex.StatusCode is >= 400 and < 600 ? ex.StatusCode : 400;
+                return StatusCode(statusCode, new
+                {
+                    message = ex.Message,
+                    code = ex.ErrorCode ?? "IMAGE_VALIDATION_FAILED"
+                });
+            }
+        }
+
+        User? currentUser = null;
+        NormalizedRecommendationSurvey? guestSurvey = null;
+        if (userId is { } authenticatedUserId)
+        {
+            currentUser = await _db.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Id == authenticatedUserId);
+
+            var hasCompletedRecommendationSurvey = RecommendationSurveyService.HasCompletedSurvey(currentUser);
+            var hasCompletedPersonalitySurvey = await _db.UserPersonalityProfiles
+                .AsNoTracking()
+                .AnyAsync(profile => profile.UserId == authenticatedUserId);
+
+            if (!hasCompletedRecommendationSurvey && !hasCompletedPersonalitySurvey)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "Please complete the recommendation survey before analysis.",
+                    code = "SURVEY_REQUIRED"
+                });
+            }
+        }
+        else if (!RecommendationSurveyService.TryNormalize(
+                     request.RecommendationSurvey,
+                     out guestSurvey,
+                     out var surveyCode,
+                     out var surveyMessage))
+        {
+            return BadRequest(new
+            {
+                message = surveyMessage,
+                code = surveyCode
             });
         }
 
         try
         {
-            var language = GetPreferredLanguage();
+            var analysisKeyEnv = ResolveAnalysisKeyEnv(hasImage, hasText, analysisAttemptIndex);
             var stopwatch = Stopwatch.StartNew();
             var aiResult = await _aiClient.AnalyzeEmotionAsync(
                 hasImage ? request.ImageBase64 : null,
                 hasText ? normalizedText : null,
                 hasImage ? normalizedMimeType : null,
-                language
+                language,
+                analysisKeyEnv
             );
             stopwatch.Stop();
 
@@ -93,6 +182,11 @@ public class AnalyzeController : ControllerBase
             var confidence = aiResult.GetProperty("confidence").GetDouble();
             var explanation = aiResult.GetProperty("explanation").GetString() ?? string.Empty;
             var analysisWarning = GetOptionalString(aiResult, "warning");
+            var contradictionDetected = GetOptionalBool(aiResult, "contradictionDetected")
+                ?? GetOptionalBool(aiResult, "contradiction_detected")
+                ?? false;
+            var clarificationMessage = GetOptionalString(aiResult, "clarificationMessage")
+                ?? GetOptionalString(aiResult, "clarification_message");
             var imageFallbackUsed = GetOptionalBool(aiResult, "imageFallbackUsed") ?? false;
             var faceDetected = HasValue(aiResult, "faceEmotion") || HasValue(aiResult, "face_emotion");
             var modalityUsed = imageFallbackUsed ? "text" : ResolveModalityUsed(hasImage, hasText);
@@ -101,20 +195,152 @@ public class AnalyzeController : ControllerBase
             var textEmotion = GetOptionalString(aiResult, "textEmotion") ?? GetOptionalString(aiResult, "text_emotion");
             var textConfidence = GetOptionalDouble(aiResult, "textConfidence") ?? GetOptionalDouble(aiResult, "text_confidence");
 
+            if (hasImage && hasText && contradictionDetected)
+            {
+                if (analysisAttemptIndex >= FinalAnalysisKeyAttemptIndex)
+                {
+                    _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds);
+                    return StatusCode(StatusCodes.Status429TooManyRequests, new
+                    {
+                        message = BuildCooldownMessage(language, DefaultAnalysisCooldownSeconds),
+                        code = "ANALYSIS_RETRY_COOLDOWN",
+                        retryAfterSeconds = DefaultAnalysisCooldownSeconds
+                    });
+                }
+
+                _analysisCooldowns.AdvanceContradictionAttempt(actorKey);
+                var alert = BuildContradictionAlert(language, analysisAttemptIndex, clarificationMessage);
+                return StatusCode(StatusCodes.Status409Conflict, new
+                {
+                    message = alert.Message,
+                    code = "ANALYSIS_CONTRADICTION_WARNING",
+                    alertTitle = alert.Title,
+                    alertHint = alert.Hint,
+                    nextAttempt = analysisAttemptIndex + 2
+                });
+            }
+
+            _analysisCooldowns.ResetProgress(actorKey);
+            var analysisContext = BuildAnalysisContext(
+                normalizedText,
+                modalityUsed,
+                language,
+                faceEmotion,
+                textEmotion
+            );
+
+            if (userId == null)
+            {
+                var guestHistoryId = Guid.NewGuid();
+                JsonElement? guestRecommendations = null;
+                string? guestWarning = analysisWarning;
+                var guestPipelineStatus = "complete";
+                string? guestPartialError = null;
+                var guestMissingRecommendations = new List<string>();
+                var guestRecommendationContext = RecommendationSurveyService.BuildRecommendationContext(analysisContext, guestSurvey);
+
+                try
+                {
+                    guestRecommendations = await _aiClient.GetRecommendationsAsync(
+                        emotion,
+                        guestRecommendationContext,
+                        language,
+                        true
+                    );
+                    if (guestRecommendations.Value.TryGetProperty("coachComment", out var coachCommentProperty) &&
+                        coachCommentProperty.ValueKind == JsonValueKind.String)
+                    {
+                        var coachComment = coachCommentProperty.GetString()?.Trim();
+                        if (!string.IsNullOrWhiteSpace(coachComment))
+                        {
+                            explanation = coachComment;
+                        }
+                    }
+                    var recommendationStatus = ReadRecommendationStatus(guestRecommendations);
+                    guestPipelineStatus = recommendationStatus.Status;
+                    guestPartialError = recommendationStatus.PartialError;
+                    guestMissingRecommendations = recommendationStatus.MissingRecommendations;
+                    if (!string.IsNullOrWhiteSpace(guestPartialError))
+                    {
+                        guestWarning = AppendWarning(guestWarning, guestPartialError);
+                    }
+                }
+                catch (AiServiceException ex)
+                {
+                    guestPipelineStatus = "partial";
+                    guestPartialError = $"Recommendations are partially unavailable: {ex.Message}";
+                    guestMissingRecommendations = new List<string> { "music", "films", "books" };
+                    guestWarning = AppendWarning(guestWarning, guestPartialError);
+                    guestRecommendations = BuildFallbackRecommendationsElement(emotion, explanation, language, guestPartialError, guestMissingRecommendations);
+                }
+                catch (HttpRequestException ex)
+                {
+                    guestPipelineStatus = "partial";
+                    guestPartialError = $"Recommendations are partially unavailable: {ex.Message}";
+                    guestMissingRecommendations = new List<string> { "music", "films", "books" };
+                    guestWarning = AppendWarning(guestWarning, guestPartialError);
+                    guestRecommendations = BuildFallbackRecommendationsElement(emotion, explanation, language, guestPartialError, guestMissingRecommendations);
+                }
+
+                var completedGuestUsageCount = RegisterGuestCompletedAnalysis(guestSession);
+                var guestRecommendationBundle = GuestRecommendationBundle.FromJsonElement(guestRecommendations);
+                _guestAnalysisStore.Save(_guestAnalysisStore.CreateRecord(
+                    guestHistoryId,
+                    actorKey,
+                    guestSessionId,
+                    emotion,
+                    confidence,
+                    explanation,
+                    guestWarning,
+                    modalityUsed,
+                    imageFallbackUsed ? "gemini-text" : ResolveModelUsed(hasImage, hasText),
+                    (int)stopwatch.ElapsedMilliseconds,
+                    faceDetected,
+                    guestRecommendationBundle
+                ));
+
+                return Ok(new
+                {
+                    historyId = guestHistoryId,
+                    emotion,
+                    confidence,
+                    explanation,
+                    warning = guestWarning,
+                    modalityUsed,
+                    modelUsed = imageFallbackUsed ? "gemini-text" : ResolveModelUsed(hasImage, hasText),
+                    responseTimeMs = (int)stopwatch.ElapsedMilliseconds,
+                    faceDetected,
+                    needsReason = false,
+                    reasonProvided = true,
+                    status = guestPipelineStatus,
+                    partial_error = guestPartialError,
+                    partialError = guestPartialError,
+                    missing_recommendations = guestMissingRecommendations,
+                    missingRecommendations = guestMissingRecommendations,
+                    ask_avatar_refresh = false,
+                    askAvatarRefresh = false,
+                    coach_advice = explanation,
+                    ask_media_log = true,
+                    guestRemainingAnalyses = Math.Max(0, GuestAnalysisLimit - completedGuestUsageCount),
+                    recommendations = new
+                    {
+                        music = guestRecommendationBundle.Music,
+                        movies = guestRecommendationBundle.Movies,
+                        books = guestRecommendationBundle.Books,
+                        lifeAdvice = guestRecommendationBundle.LifeAdvice
+                    }
+                });
+            }
+
+            var resolvedUserId = userId ?? throw new InvalidOperationException("Authenticated user id missing.");
             var history = new EmotionHistory
             {
-                UserId = userId,
-                GuestSessionId = userId == null ? guestSessionId : null,
+                UserId = resolvedUserId,
+                GuestSessionId = null,
                 DetectedEmotion = emotion,
                 Confidence = confidence,
                 Explanation = explanation,
-                UserText = BuildAnalysisContext(
-                    normalizedText,
-                    modalityUsed,
-                    language,
-                    faceEmotion,
-                    textEmotion
-                ),
+                UserText = analysisContext,
                 ImagePath = hasImage
                     ? $"analysis_{DateTime.UtcNow:yyyyMMddHHmmss}{GetImageExtension(normalizedMimeType)}"
                     : null,
@@ -124,31 +350,87 @@ public class AnalyzeController : ControllerBase
                 FaceDetected = faceDetected
             };
 
-            _db.EmotionHistories.Add(history);
-            await _db.SaveChangesAsync();
-
             JsonElement? recommendations = null;
             string? warning = analysisWarning;
+            var pipelineStatus = "complete";
+            string? partialError = null;
+            var missingRecommendations = new List<string>();
+            await MaybeLogPersonalityRefreshAsync(resolvedUserId, language);
+            var personalityContext = await BuildPersonalitySnapshotAsync(resolvedUserId);
+            var recommendationContext = AppendPersonalityContext(
+                RecommendationSurveyService.BuildRecommendationContext(history.UserText, currentUser),
+                personalityContext
+            );
 
             try
             {
                 recommendations = await _aiClient.GetRecommendationsAsync(
                     emotion,
-                    history.UserText,
+                    recommendationContext,
                     language,
                     true
                 );
-                SaveRecommendations(history.Id, recommendations.Value);
-                await _db.SaveChangesAsync();
+                if (recommendations.Value.TryGetProperty("coachComment", out var coachCommentProperty) &&
+                    coachCommentProperty.ValueKind == JsonValueKind.String)
+                {
+                    var coachComment = coachCommentProperty.GetString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(coachComment))
+                    {
+                        explanation = coachComment;
+                        history.Explanation = coachComment;
+                    }
+                }
+                var recommendationStatus = ReadRecommendationStatus(recommendations);
+                pipelineStatus = recommendationStatus.Status;
+                partialError = recommendationStatus.PartialError;
+                missingRecommendations = recommendationStatus.MissingRecommendations;
+                if (!string.IsNullOrWhiteSpace(partialError))
+                {
+                    warning = AppendWarning(warning, partialError);
+                }
             }
             catch (AiServiceException ex)
             {
-                warning = AppendWarning(warning, $"Recommendations are temporarily unavailable: {ex.Message}");
+                pipelineStatus = "partial";
+                partialError = $"Recommendations are partially unavailable: {ex.Message}";
+                missingRecommendations = new List<string> { "music", "films", "books" };
+                warning = AppendWarning(warning, partialError);
+                recommendations = BuildFallbackRecommendationsElement(emotion, explanation, language, partialError, missingRecommendations);
             }
             catch (HttpRequestException ex)
             {
-                warning = AppendWarning(warning, $"Recommendations are temporarily unavailable: {ex.Message}");
+                pipelineStatus = "partial";
+                partialError = $"Recommendations are partially unavailable: {ex.Message}";
+                missingRecommendations = new List<string> { "music", "films", "books" };
+                warning = AppendWarning(warning, partialError);
+                recommendations = BuildFallbackRecommendationsElement(emotion, explanation, language, partialError, missingRecommendations);
             }
+
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+            _db.EmotionHistories.Add(history);
+            if (recommendations is { } recommendationValue)
+            {
+                SaveRecommendations(history.Id, recommendationValue);
+            }
+
+            await SaveAnalysisRecordAsync(
+                resolvedUserId,
+                hasImage,
+                hasText,
+                emotion,
+                confidence,
+                faceEmotion,
+                faceConfidence,
+                textEmotion,
+                textConfidence,
+                contradictionDetected,
+                language,
+                recommendations,
+                pipelineStatus
+            );
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            var askAvatarRefresh = await ShouldAskAvatarRefreshAsync(resolvedUserId);
 
             return Ok(new
             {
@@ -163,6 +445,15 @@ public class AnalyzeController : ControllerBase
                 faceDetected = history.FaceDetected,
                 needsReason = false,
                 reasonProvided = true,
+                status = pipelineStatus,
+                partial_error = partialError,
+                partialError,
+                missing_recommendations = missingRecommendations,
+                missingRecommendations,
+                ask_avatar_refresh = askAvatarRefresh,
+                askAvatarRefresh,
+                coach_advice = explanation,
+                ask_media_log = true,
                 guestRemainingAnalyses = userId == null
                     ? (int?)Math.Max(0, GuestAnalysisLimit - guestUsageCount - 1)
                     : null,
@@ -177,8 +468,39 @@ public class AnalyzeController : ControllerBase
         }
         catch (AiServiceException ex)
         {
-            var statusCode = ex.StatusCode is >= 400 and < 600 ? ex.StatusCode : 502;
-            return StatusCode(statusCode, new { message = ex.Message, code = ex.ErrorCode });
+            if (hasImage &&
+                hasText &&
+                analysisAttemptIndex >= FinalAnalysisKeyAttemptIndex &&
+                ex.ErrorCode == "AI_QUOTA_EXCEEDED")
+            {
+                _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds);
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    message = BuildCooldownMessage(language, DefaultAnalysisCooldownSeconds),
+                    code = "ANALYSIS_RETRY_COOLDOWN",
+                    retryAfterSeconds = DefaultAnalysisCooldownSeconds
+                });
+            }
+
+            if (ex.ErrorCode == "ANALYSIS_RETRY_COOLDOWN")
+            {
+                var retryAfterSeconds = Math.Max(1, ex.RetryAfterSeconds ?? DefaultAnalysisCooldownSeconds);
+                _analysisCooldowns.StartCooldown(actorKey, retryAfterSeconds);
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    message = ex.Message,
+                    code = ex.ErrorCode,
+                    retryAfterSeconds
+                });
+            }
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Analysis failed before an emotion result could be produced.",
+                detail = ex.Message,
+                code = ex.ErrorCode ?? "ANALYSIS_FAILED_BEFORE_EMOTION",
+                retryAfterSeconds = ex.RetryAfterSeconds
+            });
         }
         catch (HttpRequestException ex)
         {
@@ -225,6 +547,447 @@ public class AnalyzeController : ControllerBase
         }
     }
 
+    private async Task SaveAnalysisRecordAsync(
+        Guid userId,
+        bool hasImage,
+        bool hasText,
+        string emotion,
+        double confidence,
+        string? imageEmotion,
+        double? imageConfidence,
+        string? textEmotion,
+        double? textConfidence,
+        bool conflictDetected,
+        string language,
+        JsonElement? recommendations,
+        string status
+    )
+    {
+        var personalitySnapshot = await BuildPersonalitySnapshotAsync(userId);
+
+        _db.AnalysisRecords.Add(new AnalysisRecord
+        {
+            UserId = userId,
+            InputType = ResolveInputType(hasImage, hasText),
+            EmotionResult = emotion,
+            EmotionConfidence = confidence,
+            ImageEmotion = imageEmotion,
+            ImageConfidence = imageConfidence,
+            TextEmotion = textEmotion,
+            TextConfidence = textConfidence,
+            ConflictDetected = conflictDetected,
+            PersonalitySnapshot = personalitySnapshot,
+            RecommendationsJson = recommendations?.GetRawText() ?? "{}",
+            Language = language,
+            Status = status is "partial" or "failed" ? status : "complete"
+        });
+
+    }
+
+    private static (string Status, string? PartialError, List<string> MissingRecommendations) ReadRecommendationStatus(
+        JsonElement? recommendations
+    )
+    {
+        if (recommendations is not { } value)
+        {
+            return ("partial", "Recommendations are unavailable.", new List<string> { "music", "films", "books" });
+        }
+
+        var status = GetOptionalString(value, "status") == "partial" ? "partial" : "complete";
+        var partialError = GetOptionalString(value, "partial_error") ?? GetOptionalString(value, "partialError");
+        var missing = GetOptionalStringArray(value, "missing_recommendations");
+        if (missing.Count == 0)
+        {
+            missing = GetOptionalStringArray(value, "missingRecommendations");
+        }
+
+        if (missing.Count > 0 || !string.IsNullOrWhiteSpace(partialError))
+        {
+            status = "partial";
+        }
+
+        return (status, partialError, missing);
+    }
+
+    private static JsonElement BuildFallbackRecommendationsElement(
+        string emotion,
+        string coachAdvice,
+        string language,
+        string partialError,
+        List<string> missingRecommendations
+    )
+    {
+        var normalizedCoachAdvice = string.IsNullOrWhiteSpace(coachAdvice)
+            ? BuildFallbackCoachAdvice(emotion, language)
+            : coachAdvice;
+        var payload = new
+        {
+            coachComment = normalizedCoachAdvice,
+            music = new[]
+            {
+                new { title = "Mood reset playlist", artist = "MoodLens", reason = "Fallback music suggestion while Spotify is unavailable." }
+            },
+            movies = new[]
+            {
+                new { title = "A gentle feel-good film", overview = "Fallback film suggestion while TMDB is unavailable." }
+            },
+            books = new[]
+            {
+                new { title = "A short reflective read", authors = new[] { "MoodLens" }, description = "Fallback book suggestion while Google Books is unavailable." }
+            },
+            lifeAdvice = new[]
+            {
+                new { title = "Take one small step", description = "Choose one realistic action that supports your current pace.", icon = "AI" }
+            },
+            status = "partial",
+            partial_error = partialError,
+            missing_recommendations = missingRecommendations
+        };
+
+        return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(payload));
+    }
+
+    private static string BuildFallbackCoachAdvice(string emotion, string language)
+    {
+        return language == "tr"
+            ? $"Baskın duygu {emotion}. Bazı öneri kaynakları şu an ulaşılamıyor, ama sonucu küçük ve uygulanabilir bir adım seçmek için kullanabilirsin."
+            : $"The dominant emotion is {emotion}. Some recommendation providers are unavailable right now, but you can still use this result to choose one small practical next step.";
+    }
+
+    private async Task<string?> BuildPersonalitySnapshotAsync(Guid userId)
+    {
+        var profile = await _db.UserPersonalityProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.UserId == userId);
+
+        if (profile == null)
+        {
+            return null;
+        }
+
+        var snapshot = new Dictionary<string, object?>
+        {
+            ["big_five"] = DeserializeJsonOrNull(profile.BigFiveJson),
+            ["mbti_type"] = profile.MbtiType,
+            ["spotify_top_tracks"] = DeserializeJsonOrNull(profile.SpotifyTopTracksJson),
+            ["last_updated"] = profile.LastUpdated
+        };
+
+        return JsonSerializer.Serialize(snapshot);
+    }
+
+    private async Task<bool> ShouldAskAvatarRefreshAsync(Guid userId)
+    {
+        var profile = await _db.UserPersonalityProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.UserId == userId);
+
+        if (profile == null)
+        {
+            return false;
+        }
+
+        return profile.AvatarGeneratedAt == null ||
+            DateTime.UtcNow - profile.AvatarGeneratedAt.Value >= TimeSpan.FromDays(7);
+    }
+
+    private async Task MaybeLogPersonalityRefreshAsync(Guid userId, string language)
+    {
+        var profile = await _db.UserPersonalityProfiles.FirstOrDefaultAsync(item => item.UserId == userId);
+        if (profile == null)
+        {
+            return;
+        }
+
+        var lastUpdate = await _db.PersonalityUpdateLogs
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.UpdatedAt)
+            .Select(item => (DateTime?)item.UpdatedAt)
+            .FirstOrDefaultAsync();
+
+        if (lastUpdate != null && DateTime.UtcNow - lastUpdate.Value <= TimeSpan.FromDays(3))
+        {
+            return;
+        }
+
+        var user = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == userId);
+        if (user == null)
+        {
+            return;
+        }
+
+        var spotifySummary = await ResolveSpotifySummaryAsync(user, profile);
+        var recentContent = await BuildRecentMediaContentAsync(userId);
+        if (spotifySummary == null && !HasRecentMediaContent(recentContent))
+        {
+            return;
+        }
+
+        try
+        {
+            var update = await _aiClient.UpdatePersonalityAsync(
+                DeserializeJsonOrNull(profile.BigFiveJson),
+                profile.LastUpdated.ToString("O"),
+                spotifySummary,
+                recentContent,
+                language
+            );
+
+            if (GetOptionalBool(update, "updated") == false)
+            {
+                return;
+            }
+
+            if (update.TryGetProperty("personality", out var personality) &&
+                personality.ValueKind == JsonValueKind.Object)
+            {
+                profile.BigFiveJson = personality.GetRawText();
+                profile.MbtiType = GetOptionalString(personality, "mbti") ?? profile.MbtiType;
+            }
+        }
+        catch (AiServiceException)
+        {
+            // Keep the existing profile if the scheduled behavioral refresh cannot reach Gemini.
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            // Recommendation analysis should not fail just because the background profile refresh is unavailable.
+            return;
+        }
+
+        profile.LastUpdated = DateTime.UtcNow;
+        _db.PersonalityUpdateLogs.Add(new PersonalityUpdateLog
+        {
+            UserId = userId,
+            UpdatedAt = profile.LastUpdated,
+            TriggerSource = "analysis_auto_check"
+        });
+    }
+
+    private async Task<object?> ResolveSpotifySummaryAsync(User user, UserPersonalityProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(user.SpotifyAccessToken) ||
+            user.SpotifyTokenExpiry is null ||
+            user.SpotifyTokenExpiry <= DateTime.UtcNow)
+        {
+            return null;
+        }
+
+        var freshSummary = await FetchSpotifyTopTracksSummaryAsync(user.SpotifyAccessToken);
+        if (freshSummary != null)
+        {
+            profile.SpotifyTopTracksJson = JsonSerializer.Serialize(freshSummary);
+            return freshSummary;
+        }
+
+        return DeserializeJsonOrNull(profile.SpotifyTopTracksJson);
+    }
+
+    private async Task<object?> FetchSpotifyTopTracksSummaryAsync(string accessToken)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                "https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=10"
+            );
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            var response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var items = document.RootElement.TryGetProperty("items", out var itemsProperty) &&
+                        itemsProperty.ValueKind == JsonValueKind.Array
+                ? itemsProperty.EnumerateArray().ToList()
+                : new List<JsonElement>();
+
+            var artistIds = items
+                .SelectMany(item => item.TryGetProperty("artists", out var artists) && artists.ValueKind == JsonValueKind.Array
+                    ? artists.EnumerateArray()
+                    : Enumerable.Empty<JsonElement>())
+                .Select(artist => GetOptionalString(artist, "id"))
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .Distinct()
+                .Take(50)
+                .ToList();
+            var trackIds = items
+                .Select(item => GetOptionalString(item, "id"))
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .ToList();
+
+            var genres = await FetchSpotifyArtistGenresAsync(accessToken, artistIds);
+            var audioFeatures = await FetchSpotifyAudioFeaturesAsync(accessToken, trackIds);
+            var tracks = items.Select(item => new
+            {
+                id = GetOptionalString(item, "id"),
+                title = GetOptionalString(item, "name"),
+                popularity = GetOptionalDouble(item, "popularity"),
+                artists = item.TryGetProperty("artists", out var artists) && artists.ValueKind == JsonValueKind.Array
+                    ? artists.EnumerateArray().Select(artist => GetOptionalString(artist, "name")).Where(name => !string.IsNullOrWhiteSpace(name)).ToList()
+                    : new List<string?>()
+            }).ToList();
+
+            return new
+            {
+                connected = true,
+                fetchedAt = DateTime.UtcNow,
+                tracks,
+                genres,
+                audioFeatures
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<List<string>> FetchSpotifyArtistGenresAsync(string accessToken, List<string> artistIds)
+    {
+        if (artistIds.Count == 0)
+        {
+            return new List<string>();
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"https://api.spotify.com/v1/artists?ids={Uri.EscapeDataString(string.Join(",", artistIds))}"
+            );
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            var response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new List<string>();
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return document.RootElement.TryGetProperty("artists", out var artists) &&
+                   artists.ValueKind == JsonValueKind.Array
+                ? artists.EnumerateArray()
+                    .SelectMany(artist => artist.TryGetProperty("genres", out var genres) && genres.ValueKind == JsonValueKind.Array
+                        ? genres.EnumerateArray()
+                        : Enumerable.Empty<JsonElement>())
+                    .Select(genre => genre.GetString())
+                    .Where(genre => !string.IsNullOrWhiteSpace(genre))
+                    .Select(genre => genre!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(20)
+                    .ToList()
+                : new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private async Task<object?> FetchSpotifyAudioFeaturesAsync(string accessToken, List<string> trackIds)
+    {
+        if (trackIds.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"https://api.spotify.com/v1/audio-features?ids={Uri.EscapeDataString(string.Join(",", trackIds.Take(100)))}"
+            );
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            var response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var features = document.RootElement.TryGetProperty("audio_features", out var audioFeatures) &&
+                           audioFeatures.ValueKind == JsonValueKind.Array
+                ? audioFeatures.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Object).ToList()
+                : new List<JsonElement>();
+            if (features.Count == 0)
+            {
+                return null;
+            }
+
+            return new
+            {
+                valence = AverageFeature(features, "valence"),
+                energy = AverageFeature(features, "energy"),
+                tempo = AverageFeature(features, "tempo")
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<Dictionary<string, object?>> BuildRecentMediaContentAsync(Guid userId)
+    {
+        var latestLogs = await _db.UserMediaLogs
+            .AsNoTracking()
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.LoggedAt)
+            .Take(20)
+            .ToListAsync();
+        var latestFilm = latestLogs.FirstOrDefault(item => item.Type == "film");
+        var latestBook = latestLogs.FirstOrDefault(item => item.Type == "book");
+
+        return new Dictionary<string, object?>
+        {
+            ["film"] = latestFilm == null ? null : new { latestFilm.Title, latestFilm.Note, latestFilm.LoggedAt },
+            ["book"] = latestBook == null ? null : new { latestBook.Title, latestBook.Note, latestBook.LoggedAt }
+        };
+    }
+
+    private static bool HasRecentMediaContent(Dictionary<string, object?> recentContent)
+    {
+        return recentContent.Values.Any(value => value != null);
+    }
+
+    private static double? AverageFeature(List<JsonElement> features, string propertyName)
+    {
+        var values = features
+            .Select(item => GetOptionalDouble(item, propertyName))
+            .Where(value => value != null)
+            .Select(value => value!.Value)
+            .ToList();
+
+        return values.Count == 0 ? null : values.Average();
+    }
+
+    private static object? DeserializeJsonOrNull(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<JsonElement>(rawJson);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static object GetRecommendationCategory(JsonElement? recommendations, string category)
     {
         if (recommendations is not { } value ||
@@ -251,8 +1014,6 @@ public class AnalyzeController : ControllerBase
             "image/jpg" => "image/jpeg",
             "image/png" => "image/png",
             "image/webp" => "image/webp",
-            "image/heic" => "image/heic",
-            "image/heif" => "image/heif",
             _ => string.Empty
         };
 
@@ -265,8 +1026,6 @@ public class AnalyzeController : ControllerBase
         {
             "image/png" => ".png",
             "image/webp" => ".webp",
-            "image/heic" => ".heic",
-            "image/heif" => ".heif",
             _ => ".jpg"
         };
     }
@@ -309,6 +1068,16 @@ public class AnalyzeController : ControllerBase
         return "text";
     }
 
+    private static string ResolveInputType(bool hasImage, bool hasText)
+    {
+        if (hasImage && hasText)
+        {
+            return "both";
+        }
+
+        return hasImage ? "image" : "text";
+    }
+
     private static string ResolveModelUsed(bool hasImage, bool hasText)
     {
         if (hasImage && hasText)
@@ -341,7 +1110,7 @@ public class AnalyzeController : ControllerBase
         {
             if (language == "tr")
             {
-                return $"Gorsel odakli analiz. Yerel yuz modeli tarafindan tespit edilen duygu: {faceEmotion ?? "calm"}.";
+                return $"Görsel odaklı analiz. Yerel yüz modeli tarafından tespit edilen duygu: {faceEmotion ?? "calm"}.";
             }
 
             return $"Image-first analysis. Local face model emotion: {faceEmotion ?? "calm"}.";
@@ -350,7 +1119,7 @@ public class AnalyzeController : ControllerBase
         var normalizedText = string.IsNullOrWhiteSpace(text) ? (language == "tr" ? "Metin girilmedi." : "No text provided.") : text;
         if (language == "tr")
         {
-            return $"{normalizedText}\nYerel yuz sinyali: {faceEmotion ?? "calm"}\nMetin sinyali: {textEmotion ?? "calm"}";
+            return $"{normalizedText}\nYerel yüz sinyali: {faceEmotion ?? "calm"}\nMetin sinyali: {textEmotion ?? "calm"}";
         }
 
         return $"{normalizedText}\nLocal facial signal: {faceEmotion ?? "calm"}\nText signal: {textEmotion ?? "calm"}";
@@ -380,6 +1149,23 @@ public class AnalyzeController : ControllerBase
             : null;
     }
 
+    private static List<string> GetOptionalStringArray(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.Array)
+        {
+            return new List<string>();
+        }
+
+        return property.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static bool? GetOptionalBool(JsonElement element, string propertyName)
     {
         return element.TryGetProperty(propertyName, out var property) &&
@@ -398,8 +1184,109 @@ public class AnalyzeController : ControllerBase
         return $"{currentWarning} {nextWarning}";
     }
 
-    private string? ResolveGuestSessionId(string? bodyGuestSessionId)
+    private static string AppendPersonalityContext(string? currentContext, string? personalitySnapshot)
     {
+        if (string.IsNullOrWhiteSpace(personalitySnapshot))
+        {
+            return currentContext ?? string.Empty;
+        }
+
+        var normalizedContext = currentContext ?? string.Empty;
+        return $"{normalizedContext}\nPersonality profile JSON: {personalitySnapshot}".Trim();
+    }
+
+    private static string? ResolveActorKey(Guid? userId, string? guestSessionId)
+    {
+        if (userId is { } authenticatedUserId)
+        {
+            return $"user:{authenticatedUserId}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(guestSessionId))
+        {
+            return $"guest:{guestSessionId}";
+        }
+
+        return null;
+    }
+
+    private static string BuildCooldownMessage(string language, int retryAfterSeconds)
+    {
+        var normalizedSeconds = Math.Max(1, retryAfterSeconds);
+        if (language == "tr")
+        {
+            return $"Çakışan selfie ve metin girdisi nedeniyle analiz geçici olarak kilitlendi. Lütfen {normalizedSeconds} saniye sonra tekrar dene.";
+        }
+
+        return $"Analysis is temporarily locked because the selfie and text stayed contradictory. Please try again in {normalizedSeconds} seconds.";
+    }
+
+    private static string ResolveAnalysisKeyEnv(bool hasImage, bool hasText, int attemptIndex)
+    {
+        if (!(hasImage && hasText))
+        {
+            return "GEMINI_KEY_TEXT_EMOTION";
+        }
+
+        return attemptIndex switch
+        {
+            1 => "GEMINI_KEY_CONFLICT_2",
+            2 => "GEMINI_KEY_CONFLICT_3",
+            _ => "GEMINI_KEY_CONFLICT_1"
+        };
+    }
+
+    private static (string Title, string Message, string Hint) BuildContradictionAlert(
+        string language,
+        int attemptIndex,
+        string? clarificationMessage
+    )
+    {
+        if (language == "tr")
+        {
+            if (attemptIndex >= 1)
+            {
+                return (
+                    "Zıt duygu tespiti sürüyor",
+                    string.IsNullOrWhiteSpace(clarificationMessage)
+                        ? "Selfie ve metin hala birbirine ters görünüyor. Duygu durumundan eminsen bir kez daha dene; son kontrolü farklı bir analiz anahtarıyla yapacağız."
+                        : clarificationMessage,
+                    "Bir sonraki denemede sistemi son kez farklı bir analiz anahtarıyla yeniden kontrol edeceğiz."
+                );
+            }
+
+            return (
+                "Zıt duygu tespiti",
+                string.IsNullOrWhiteSpace(clarificationMessage)
+                    ? "Selfie ve metin birbirine zıt görünüyor. Duygu durumundan emin misin?"
+                    : clarificationMessage,
+                "İstersen tekrar dene; sistemi farklı bir analiz anahtarıyla yeniden kontrol edeceğiz."
+            );
+        }
+
+        if (attemptIndex >= 1)
+        {
+            return (
+                "Contradictory emotion still detected",
+                string.IsNullOrWhiteSpace(clarificationMessage)
+                    ? "Your selfie and text still point to opposite emotions. If you are sure, try once more and we will run a final verification with another analysis key."
+                    : clarificationMessage,
+                "Your next retry will trigger the final contradiction check."
+            );
+        }
+
+        return (
+            "Contradictory emotion detected",
+            string.IsNullOrWhiteSpace(clarificationMessage)
+                ? "Your selfie and text look emotionally opposite. Are you sure this matches how you feel?"
+                : clarificationMessage,
+            "If you retry, we will re-check the result with another analysis key."
+        );
+    }
+
+    private GuestSessionState ResolveGuestSessionState(string? bodyGuestSessionId)
+    {
+        var cookieState = ReadGuestSessionStateCookie();
         var candidate = bodyGuestSessionId;
 
         if (string.IsNullOrWhiteSpace(candidate) &&
@@ -408,8 +1295,64 @@ public class AnalyzeController : ControllerBase
             candidate = headerGuestSessionId.ToString();
         }
 
-        candidate = candidate?.Trim();
-        return string.IsNullOrWhiteSpace(candidate) ? null : candidate;
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            candidate = cookieState?.SessionId;
+        }
+
+        var sessionId = string.IsNullOrWhiteSpace(candidate)
+            ? Guid.NewGuid().ToString("N")
+            : candidate.Trim();
+        var count = cookieState != null && string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal)
+            ? Math.Clamp(cookieState.CompletedAnalyses, 0, GuestAnalysisLimit)
+            : 0;
+        var state = new GuestSessionState(sessionId, count);
+        WriteGuestSessionStateCookie(state);
+        return state;
+    }
+
+    private int RegisterGuestCompletedAnalysis(GuestSessionState? state)
+    {
+        var current = state ?? ResolveGuestSessionState(null);
+        var completed = Math.Clamp(current.CompletedAnalyses + 1, 0, GuestAnalysisLimit);
+        WriteGuestSessionStateCookie(current with { CompletedAnalyses = completed });
+        return completed;
+    }
+
+    private GuestSessionState? ReadGuestSessionStateCookie()
+    {
+        if (!Request.Cookies.TryGetValue(GuestSessionCookieName, out var rawCookie) ||
+            string.IsNullOrWhiteSpace(rawCookie))
+        {
+            return null;
+        }
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(rawCookie));
+            return JsonSerializer.Deserialize<GuestSessionState>(json);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void WriteGuestSessionStateCookie(GuestSessionState state)
+    {
+        var json = JsonSerializer.Serialize(state);
+        var value = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        Response.Cookies.Append(
+            GuestSessionCookieName,
+            value,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                IsEssential = true,
+                SameSite = SameSiteMode.Lax,
+                Secure = Request.IsHttps
+            }
+        );
     }
 
     private Guid? GetUserId()
@@ -417,4 +1360,6 @@ public class AnalyzeController : ControllerBase
         var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(claim, out var id) ? id : null;
     }
+
+    private sealed record GuestSessionState(string SessionId, int CompletedAnalyses);
 }

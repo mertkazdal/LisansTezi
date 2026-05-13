@@ -27,7 +27,7 @@ export function useRecommendations(historyId) {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err.message || "Oneriler yuklenemedi.");
+          setError(err.message || "Öneriler yüklenemedi.");
         }
       } finally {
         if (!cancelled) {

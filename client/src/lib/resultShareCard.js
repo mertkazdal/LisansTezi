@@ -72,7 +72,7 @@ function drawCard(ctx, result, emotionMeta, labels = {}, language = "tr") {
   ctx.fill();
   ctx.fillStyle = "#ccfbf1";
   ctx.font = "700 23px Segoe UI, Arial, sans-serif";
-  ctx.fillText(String(labels.eyebrow || "AI DESTEKLI DUYGU ANALIZI").toUpperCase(), 158, 183);
+  ctx.fillText(String(labels.eyebrow || "AI DESTEKLİ DUYGU ANALİZİ").toUpperCase(), 158, 183);
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "900 54px Segoe UI, Arial, sans-serif";
@@ -105,7 +105,7 @@ function drawCard(ctx, result, emotionMeta, labels = {}, language = "tr") {
 
   ctx.fillStyle = "#64748b";
   ctx.font = "700 24px Segoe UI, Arial, sans-serif";
-  ctx.fillText(labels.footer || "yasam kocu · premium analiz özeti", 130, 1212);
+  ctx.fillText(labels.footer || "yaşam koçu · premium analiz özeti", 130, 1212);
 }
 
 function drawEmotionBadge(ctx, accent, title, modeLabel, labels = {}, language = "tr") {

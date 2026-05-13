@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
@@ -19,13 +19,22 @@ const ProfilePage = lazy(() =>
 
 function App() {
   const hydrateToken = useAuthStore((state) => state.hydrateToken);
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const location = useLocation();
+  const isHomePoster = location.pathname === "/";
+  const isGuestFlow = !isLoggedIn;
+  const isRegisteredPanelFlow = isLoggedIn && isRegisteredPanelPath(location.pathname);
+  const usesRevealChrome = isGuestFlow || isRegisteredPanelFlow;
 
   useEffect(() => {
     hydrateToken();
   }, [hydrateToken]);
 
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${isHomePoster ? "is-home-poster" : ""} ${isGuestFlow ? "is-guest-flow" : ""} ${usesRevealChrome ? "is-reveal-chrome" : ""}`}
+    >
+      {usesRevealChrome && <div className="guest-navbar-hotspot" aria-hidden="true" />}
       <Navbar />
       <main className="app-content">
         <Suspense fallback={<RouteFallback />}>
@@ -48,6 +57,14 @@ function App() {
 }
 
 export default App;
+
+function isRegisteredPanelPath(pathname) {
+  return pathname === "/analyze" ||
+    pathname === "/history" ||
+    pathname === "/profile" ||
+    pathname === "/metrics" ||
+    pathname.startsWith("/result/");
+}
 
 function RouteFallback() {
   const { t } = useTranslation();

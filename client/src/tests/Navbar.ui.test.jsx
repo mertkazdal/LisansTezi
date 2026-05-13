@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, screen } from "@testing-library/react";
 import Navbar from "../components/layout/Navbar";
 import { useAuthStore } from "../store/authStore";
 import { renderWithProviders, resetAuthStore } from "./test-utils";
@@ -8,17 +7,17 @@ import { renderWithProviders, resetAuthStore } from "./test-utils";
 describe("Navbar", () => {
   beforeEach(() => {
     resetAuthStore(useAuthStore);
-    delete document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.colorTheme;
   });
 
-  it("renders product identity, navigation, and the theme toggle", () => {
+  it("renders product identity and navigation without a dark/light toggle", () => {
     renderWithProviders(<Navbar />);
 
     expect(screen.getByRole("navigation", { name: /birincil|primary/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/ana sayfa|home page/i)).toBeInTheDocument();
     expect(screen.getAllByText(/analiz|analyze/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/misafir|guest/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /acik temaya gec|switch to light mode/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /acik temaya gec|switch to light mode|koyu temaya gec|switch to dark mode/i })).not.toBeInTheDocument();
   });
 
   it("shows login and register actions for guest users", () => {
@@ -28,16 +27,27 @@ describe("Navbar", () => {
     expect(screen.getAllByRole("link", { name: /kayıt ol|create account/i }).length).toBeGreaterThan(0);
   });
 
-  it("updates the root theme attribute when the toggle is pressed", async () => {
-    const user = userEvent.setup();
+  it("closes the guest navbar on pointer leave, outside click, Escape, and nav actions", () => {
     renderWithProviders(<Navbar />);
 
-    const toggle = screen.getByRole("button", { name: /acik temaya gec|switch to light mode/i });
-    expect(document.documentElement.dataset.theme).toBe("dark");
+    const navbar = screen.getByRole("navigation", { name: /birincil|primary/i });
 
-    await user.click(toggle);
+    fireEvent.pointerEnter(navbar);
+    expect(navbar).toHaveClass("is-open");
 
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(screen.getByRole("button", { name: /koyu temaya gec|switch to dark mode/i })).toBeInTheDocument();
+    fireEvent.pointerLeave(navbar);
+    expect(navbar).not.toHaveClass("is-open");
+
+    fireEvent.pointerEnter(navbar);
+    fireEvent.pointerDown(document.body);
+    expect(navbar).not.toHaveClass("is-open");
+
+    fireEvent.pointerEnter(navbar);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(navbar).not.toHaveClass("is-open");
+
+    fireEvent.pointerEnter(navbar);
+    fireEvent.click(screen.getByLabelText(/ana sayfa|home page/i));
+    expect(navbar).not.toHaveClass("is-open");
   });
 });

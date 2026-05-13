@@ -19,7 +19,7 @@ const useAnalysisStore = create((set, get) => ({
       });
       return result;
     } catch (err) {
-      set({ error: err.message || "Analiz sirasinda hata olustu", isAnalyzing: false });
+      set({ error: err.message || "Analiz sırasında hata oluştu", isAnalyzing: false });
       return null;
     }
   },
@@ -30,7 +30,7 @@ const useAnalysisStore = create((set, get) => ({
       set({ recommendations: result });
       return result;
     } catch (err) {
-      set({ error: err.message || "Oneriler alinmadi" });
+      set({ error: err.message || "Öneriler alınmadı" });
       return null;
     }
   },

@@ -4,24 +4,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { getEmotionMeta } from "../lib/emotions";
-import { getSavedRecommendations, removeSavedRecommendation, SAVED_RECOMMENDATIONS_EVENT } from "../lib/savedRecommendations";
-import { adminAPI, userAPI } from "../services/api";
+import { useColorStyle } from "../components/system/ColorStyleProvider";
+import { adminAPI, spotifyAPI, userAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
-
-function getSavedRecommendationFilters(t) {
-  return [
-    { key: "all", label: t("profile.filters.all") },
-    { key: "music", label: t("profile.filters.music") },
-    { key: "movie", label: t("profile.filters.movie") },
-    { key: "book", label: t("profile.filters.book") },
-    { key: "advice", label: t("profile.filters.advice") },
-  ];
-}
 
 export function ProfilePage() {
   const navigate = useNavigate();
   const { i18n, t } = useTranslation();
-  const { user, isLoggedIn, logout } = useAuthStore();
+  const { user, isLoggedIn, logout, updateUser } = useAuthStore();
+  const { colorTheme, setColorTheme, themes } = useColorStyle();
   const [profile, setProfile] = useState(null);
   const [adminOverview, setAdminOverview] = useState(null);
   const [error, setError] = useState("");
@@ -31,8 +22,10 @@ export function ProfilePage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState("");
   const [isExporting, setIsExporting] = useState(false);
-  const [savedRecommendations, setSavedRecommendations] = useState(() => getSavedRecommendations());
-  const [savedFilter, setSavedFilter] = useState("all");
+  const [savingColorTheme, setSavingColorTheme] = useState("");
+  const [spotifyStatus, setSpotifyStatus] = useState(null);
+  const [spotifyError, setSpotifyError] = useState("");
+  const [spotifyConnecting, setSpotifyConnecting] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -54,6 +47,19 @@ export function ProfilePage() {
         }
 
         setProfile(profileData);
+
+        try {
+          const spotifyData = await spotifyAPI.getStatus();
+          if (!cancelled) {
+            setSpotifyStatus(spotifyData);
+            setSpotifyError("");
+          }
+        } catch (spotifyRequestError) {
+          if (!cancelled) {
+            setSpotifyStatus(null);
+            setSpotifyError(spotifyRequestError.message || t("profile.spotifyLoadError"));
+          }
+        }
 
         if (profileData?.isAdmin) {
           try {
@@ -87,17 +93,14 @@ export function ProfilePage() {
   }, [isLoggedIn, navigate]);
 
   useEffect(() => {
-    function syncSavedRecommendations() {
-      setSavedRecommendations(getSavedRecommendations());
+    const preferredColorTheme = profile?.preferredColorTheme;
+    if (!preferredColorTheme) {
+      return;
     }
 
-    window.addEventListener(SAVED_RECOMMENDATIONS_EVENT, syncSavedRecommendations);
-    window.addEventListener("storage", syncSavedRecommendations);
-    return () => {
-      window.removeEventListener(SAVED_RECOMMENDATIONS_EVENT, syncSavedRecommendations);
-      window.removeEventListener("storage", syncSavedRecommendations);
-    };
-  }, []);
+    setColorTheme(preferredColorTheme);
+    updateUser({ preferredColorTheme });
+  }, [profile?.preferredColorTheme, setColorTheme, updateUser]);
 
   if (!isLoggedIn) {
     return null;
@@ -108,10 +111,6 @@ export function ProfilePage() {
   const deleteConfirmationText = profile?.deleteConfirmationText || "DELETE";
   const displayName = profile?.username || user?.username || t("profile.fallbackName");
   const displayEmail = profile?.email || user?.email || t("profile.fallbackEmail");
-  const filteredSavedRecommendations = savedFilter === "all"
-    ? savedRecommendations
-    : savedRecommendations.filter((item) => item.type === savedFilter);
-
   async function handleDeleteAccount() {
     const expectedText = String(deleteConfirmationText).toUpperCase();
     if (deleteText.trim().toUpperCase() !== expectedText) {
@@ -157,13 +156,51 @@ export function ProfilePage() {
     navigate("/");
   }
 
-  function handleRemoveSavedRecommendation(id) {
-    setSavedRecommendations(removeSavedRecommendation(id));
-    toast.success(t("profile.savedRemoved"));
+  async function handleColorThemeChange(nextTheme) {
+    if (!nextTheme || nextTheme === colorTheme || savingColorTheme) {
+      return;
+    }
+
+    const previousTheme = colorTheme;
+    setSavingColorTheme(nextTheme);
+    setColorTheme(nextTheme);
+
+    try {
+      const result = await userAPI.updateColorTheme(nextTheme);
+      const preferredColorTheme = result.preferredColorTheme || nextTheme;
+      setProfile((current) => current ? { ...current, preferredColorTheme } : current);
+      updateUser({ preferredColorTheme });
+      toast.success(t("profile.themeSaved"));
+    } catch (requestError) {
+      setColorTheme(previousTheme);
+      updateUser({ preferredColorTheme: previousTheme });
+      toast.error(requestError.message || t("profile.themeSaveError"));
+    } finally {
+      setSavingColorTheme("");
+    }
+  }
+
+  async function handleSpotifyConnect() {
+    if (spotifyConnecting) {
+      return;
+    }
+
+    setSpotifyConnecting(true);
+    try {
+      const result = await spotifyAPI.getConnectUrl();
+      if (!result?.authorizeUrl) {
+        throw new Error(t("profile.spotifyConnectError"));
+      }
+
+      window.location.assign(result.authorizeUrl);
+    } catch (requestError) {
+      toast.error(requestError.message || t("profile.spotifyConnectError"));
+      setSpotifyConnecting(false);
+    }
   }
 
   return (
-    <div className="page-shell aurora-bg">
+    <div className="page-shell aurora-bg app-page-tone profile-page">
       <motion.div
         initial={{ opacity: 0, y: 22 }}
         animate={{ opacity: 1, y: 0 }}
@@ -185,27 +222,32 @@ export function ProfilePage() {
           <ErrorPanel title={t("profile.loadError")} message={error} />
         ) : (
           <>
-            <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <ProfileStatCard label={t("profile.totalAnalyses")} value={formatCount(profile?.totalAnalyses)} detail={t("profile.totalAnalysesDetail")} accentColor="#38bdf8" />
-              <ProfileStatCard label={t("profile.frequentEmotion")} value={mostFrequentEmotion.label} detail={t("profile.frequentEmotionDetail")} accentColor={mostFrequentEmotion.accentColor} />
-              <ProfileStatCard label={t("profile.role")} value={roleLabel} detail={t("profile.roleDetail")} accentColor="#a78bfa" />
-              <ProfileStatCard label={t("profile.membershipDate")} value={formatDate(profile?.createdAt, i18n.language, t)} detail={t("profile.membershipDateDetail")} accentColor="#f59e0b" />
-            </section>
-
-            <section className="grid grid-cols-1 gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-              <LanguagePanel i18n={i18n} t={t} />
-              <DataManagementPanel t={t} />
-            </section>
-
-            <SavedRecommendationsPanel
-              items={filteredSavedRecommendations}
-              totalCount={savedRecommendations.length}
-              activeFilter={savedFilter}
-              setActiveFilter={setSavedFilter}
-              onRemove={handleRemoveSavedRecommendation}
-              onAnalyze={() => navigate("/analyze")}
+            <ProfileOverviewPanel
+              totalAnalyses={profile?.totalAnalyses}
+              mostFrequentEmotion={mostFrequentEmotion}
+              membershipDate={formatDate(profile?.createdAt, i18n.language, t)}
               t={t}
             />
+
+            <section className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-[minmax(17rem,0.82fr)_minmax(0,1.18fr)]">
+              <LanguagePanel i18n={i18n} t={t} />
+              <ColorPalettePanel
+                activeTheme={colorTheme}
+                savingTheme={savingColorTheme}
+                themes={themes}
+                onSelect={handleColorThemeChange}
+                t={t}
+              />
+              <SessionPanel onLogout={handleLogout} t={t} />
+              <SpotifyPanel
+                status={spotifyStatus}
+                error={spotifyError}
+                connecting={spotifyConnecting}
+                onConnect={handleSpotifyConnect}
+                t={t}
+                language={i18n.language}
+              />
+            </section>
 
             {profile?.isAdmin && (
               <AdminPanel
@@ -230,10 +272,6 @@ export function ProfilePage() {
                 t={t}
               />
             )}
-
-            <button type="button" onClick={handleLogout} className="btn-secondary w-full !py-4 text-base">
-              {t("profile.logout")}
-            </button>
           </>
         )}
       </motion.div>
@@ -243,48 +281,92 @@ export function ProfilePage() {
 
 function ProfileHero({ displayName, displayEmail, roleLabel, profile, mostFrequentEmotion, t, language }) {
   const initial = displayName.slice(0, 1).toUpperCase();
+  const avatarUrl = profile?.avatarUrl || profile?.avatar_url || "";
+  const dateLocale = String(language || "tr").startsWith("en") ? "en-US" : "tr-TR";
+  const createdAtLabel = profile?.createdAt
+    ? new Date(profile.createdAt).toLocaleDateString(dateLocale)
+    : "";
+
   return (
-    <section className="premium-card relative overflow-hidden p-6 sm:p-8 lg:p-10">
+    <section className="surface-panel-strong relative overflow-hidden p-5 sm:p-8">
       <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl" style={{ backgroundColor: `${mostFrequentEmotion.accentColor}22` }} />
-      <div className="absolute -bottom-28 left-8 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl" />
-      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-end">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
           <div
-            className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[2rem] border border-white/15 text-4xl font-black text-white shadow-2xl"
+            className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] border border-white/15 text-3xl font-black text-white shadow-2xl"
             style={{ background: `linear-gradient(135deg, ${mostFrequentEmotion.accentColor}55, rgba(255,255,255,0.08))` }}
           >
-            {initial}
-          </div>
-          <div>
-            <p className="section-eyebrow">{t("profile.profilePanel")}</p>
-            <h1 className="mt-5 text-4xl font-black text-white sm:text-5xl">{displayName}</h1>
-            <p className="mt-2 text-sm text-slate-400">{displayEmail}</p>
-            {profile?.createdAt && (
-              <p className="mt-2 text-sm text-slate-500">{t("profile.memberSince", { date: new Date(profile.createdAt).toLocaleDateString(language === "en" ? "en-US" : "tr-TR") })}</p>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              initial
             )}
+          </div>
+          <div className="min-w-0">
+            <p className="section-eyebrow">{t("profile.profilePanel")}</p>
+            <h1 className="mt-4 break-words text-3xl font-black leading-tight text-white sm:text-5xl">{displayName}</h1>
+            <p className="mt-2 break-all text-sm text-slate-400 sm:break-normal">{displayEmail}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-bold text-cyan-100">
+                {roleLabel}
+              </span>
+              {createdAtLabel && (
+                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-bold text-slate-300">
+                  {t("profile.memberSince", { date: createdAtLabel })}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 lg:min-w-80">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">{t("profile.accountRole")}</p>
-              <p className="mt-1 text-2xl font-black text-white">{roleLabel}</p>
-            </div>
-            <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-bold text-cyan-100">
-              {t("profile.activeAccount")}
-            </span>
-          </div>
-          <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/25 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{t("profile.frequentEmotion")}</p>
-            <p className="mt-2 text-lg font-black text-white">{mostFrequentEmotion.label}</p>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <span className="block h-full w-4/5 rounded-full" style={{ backgroundColor: mostFrequentEmotion.accentColor }} />
-            </div>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <ProfileHeroMetric label={t("profile.accountRole")} value={roleLabel} />
+          <ProfileHeroMetric
+            label={t("profile.frequentEmotion")}
+            value={mostFrequentEmotion.label}
+            accentColor={mostFrequentEmotion.accentColor}
+          />
         </div>
       </div>
     </section>
+  );
+}
+
+function ProfileHeroMetric({ label, value, accentColor }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-base font-black text-white" style={{ color: accentColor }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ProfileOverviewPanel({ totalAnalyses, mostFrequentEmotion, membershipDate, t }) {
+  return (
+    <section className="grid gap-4 md:grid-cols-3">
+      <ProfileFact label={t("profile.totalAnalyses")} value={formatCount(totalAnalyses)} detail={t("profile.totalAnalysesDetail")} />
+      <ProfileFact
+        label={t("profile.frequentEmotion")}
+        value={mostFrequentEmotion.label}
+        detail={t("profile.frequentEmotionDetail")}
+        accentColor={mostFrequentEmotion.accentColor}
+      />
+      <ProfileFact label={t("profile.membershipDate")} value={membershipDate} detail={t("profile.membershipDateDetail")} />
+    </section>
+  );
+}
+
+function ProfileFact({ label, value, detail, accentColor }) {
+  return (
+    <div className="premium-card min-h-[8.5rem] p-5">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 break-words text-3xl font-black text-white" style={{ color: accentColor }}>
+        {value}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
+    </div>
   );
 }
 
@@ -308,7 +390,7 @@ export function LanguagePanel({ i18n, t }) {
   ];
 
   return (
-    <section className="premium-card p-6">
+    <section className="premium-card flex h-full flex-col p-5 sm:p-6">
       <h2 className="text-xl font-black text-white">{t("profile.languageTitle")}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-400">{t("profile.languageDescription")}</p>
       <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.05] p-1.5">
@@ -323,7 +405,7 @@ export function LanguagePanel({ i18n, t }) {
                 localStorage.setItem("language", language.key);
               }}
               aria-pressed={active}
-              className={`rounded-xl px-4 py-3 text-sm font-black transition ${
+              className={`min-h-12 rounded-xl px-3 py-3 text-sm font-black transition ${
                 active ? "bg-cyan-200/15 text-cyan-50 shadow-lg shadow-cyan-950/10" : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
@@ -336,78 +418,151 @@ export function LanguagePanel({ i18n, t }) {
   );
 }
 
-function DataManagementPanel({ t }) {
+function ColorPalettePanel({ activeTheme, savingTheme, themes, onSelect, t }) {
   return (
-    <section className="premium-card p-6">
-      <h2 className="text-xl font-black text-white">{t("profile.gdprTitle")}</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-400">
-        {t("profile.gdprDescription")}
-      </p>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        {t("profile.dataChips", { returnObjects: true }).map((item) => (
-          <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-center text-sm font-bold text-slate-200">
-            {item}
-          </div>
-        ))}
+    <section className="premium-card h-full p-5 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-black text-white">{t("profile.themeTitle")}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+            {t("profile.themeDescription")}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-black text-cyan-100">
+          {savingTheme ? t("profile.themeSaving") : t("profile.themeSynced")}
+        </span>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="group" aria-label={t("profile.themeTitle")}>
+        {themes.map((theme) => {
+          const active = activeTheme === theme.id;
+          const saving = savingTheme === theme.id;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              onClick={() => onSelect(theme.id)}
+              disabled={Boolean(savingTheme)}
+              aria-pressed={active}
+              className={`focus-ring flex min-h-[4.5rem] items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                active
+                  ? "border-cyan-200/30 bg-cyan-200/10 text-white"
+                  : "border-white/10 bg-white/[0.05] text-slate-300 hover:border-white/20 hover:bg-white/[0.08]"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className="h-8 w-8 shrink-0 rounded-full border border-white/20"
+                style={{ background: theme.primary }}
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-black">{theme.label}</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  {saving ? t("profile.themeSaving") : active ? t("profile.themeSelected") : t("profile.themeApply")}
+                </span>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function SavedRecommendationsPanel({ items, totalCount, activeFilter, setActiveFilter, onRemove, onAnalyze, t }) {
+function SessionPanel({ onLogout, t }) {
   return (
-    <section className="premium-card overflow-hidden p-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="section-eyebrow !px-3 !py-1.5">{t("profile.savedEyebrow")}</p>
-          <h2 className="mt-4 text-2xl font-black text-white">{t("profile.savedTitle")}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            {t("profile.savedRecommendationsDescription")}
+    <section className="premium-card flex h-full flex-col justify-between p-5 sm:p-6">
+      <div>
+        <h2 className="text-xl font-black text-white">{t("profile.sessionTitle")}</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-400">{t("profile.sessionDescription")}</p>
+      </div>
+      <button type="button" onClick={onLogout} className="btn-secondary mt-5 w-full !py-3 text-base">
+        {t("profile.logout")}
+      </button>
+    </section>
+  );
+}
+
+function SpotifyPanel({ status, error, connecting, onConnect, t, language = "tr" }) {
+  const connected = Boolean(status?.connected);
+  const topTracks = Array.isArray(status?.topTracks) ? status.topTracks.slice(0, 5) : [];
+  const dateLocale = String(language || "tr").startsWith("en") ? "en-US" : "tr-TR";
+  const lastSyncedAt = status?.lastSyncedAt
+    ? new Date(status.lastSyncedAt).toLocaleDateString(dateLocale)
+    : "";
+
+  return (
+    <section className="premium-card h-full p-5 sm:p-6">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 max-w-3xl">
+          <p className="section-eyebrow !px-3 !py-1.5">{t("profile.spotifyEyebrow")}</p>
+          <h2 className="mt-4 text-2xl font-black text-white">{t("profile.spotifyTitle")}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            {t("profile.spotifyDescription")}
           </p>
         </div>
-        <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-4 py-2 text-sm font-black text-cyan-100">
-          {t("profile.savedCount", { count: totalCount })}
-        </span>
+        <div className="flex flex-col items-start gap-3 lg:min-w-48 lg:items-end">
+          <span
+            className={`rounded-full border px-3 py-1 text-xs font-black ${
+              connected
+                ? "border-emerald-200/20 bg-emerald-200/10 text-emerald-100"
+                : "border-white/10 bg-white/[0.05] text-slate-300"
+            }`}
+          >
+            {connected ? t("profile.spotifyConnected") : t("profile.spotifyDisconnected")}
+          </span>
+          <button type="button" onClick={onConnect} disabled={connecting} className="btn-primary w-full whitespace-nowrap !px-5 !py-3 text-sm sm:w-auto sm:min-w-48">
+            {connecting
+              ? t("profile.spotifyConnecting")
+              : connected
+                ? t("profile.spotifyReconnect")
+                : t("profile.spotifyConnect")}
+          </button>
+        </div>
       </div>
 
-      <div className="mt-5 flex gap-2 overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.05] p-1.5">
-        {getSavedRecommendationFilters(t).map((filter) => {
-          const active = activeFilter === filter.key;
-          return (
-            <button
-              key={filter.key}
-              type="button"
-              onClick={() => setActiveFilter(filter.key)}
-              aria-pressed={active}
-              className={`focus-ring rounded-2xl px-4 py-2.5 text-sm font-black transition ${
-                active ? "bg-cyan-200/15 text-cyan-50 shadow-lg shadow-cyan-950/10" : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
-              }`}
-            >
-              {filter.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {items.length ? (
-        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {items.map((item) => (
-            <SavedRecommendationCard key={item.id} item={item} onRemove={() => onRemove(item.id)} t={t} />
-          ))}
+      {error ? (
+        <div className="mt-5 rounded-2xl border border-amber-200/15 bg-amber-200/10 px-4 py-3 text-sm leading-6 text-amber-100">
+          {error}
         </div>
       ) : (
-        <div className="empty-illustration mt-5 px-6 py-8 text-center">
-          <div>
-            <span className="orb mx-auto h-14 w-14" aria-hidden="true">
-              <span className="relative z-10 h-3 w-3 rounded-full bg-cyan-100" />
-            </span>
-            <p className="mt-5 text-lg font-black text-white">{t("profile.savedEmptyTitle")}</p>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              {t("profile.savedEmptyDescription")}
+        <div className="mt-5 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t("profile.spotifySignalTitle")}</p>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              {connected ? t("profile.spotifySignalReady") : t("profile.spotifySignalWaiting")}
             </p>
-            <button type="button" onClick={onAnalyze} className="btn-primary mt-5">
-              {t("history.newAnalysis")}
-            </button>
+            {lastSyncedAt && (
+              <p className="mt-3 text-xs font-bold text-slate-500">
+                {t("profile.spotifyLastSync", { date: lastSyncedAt })}
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t("profile.spotifyTracksTitle")}</p>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-bold text-slate-400">
+                {t("profile.spotifyTracksWindow")}
+              </span>
+            </div>
+            {topTracks.length > 0 ? (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {topTracks.map((track, index) => (
+                  <div key={`${track.title || "track"}-${index}`} className="rounded-2xl border border-white/10 bg-black/10 px-3 py-3">
+                    <p className="truncate text-sm font-black text-white">{track.title || t("profile.spotifyUnknownTrack")}</p>
+                    <p className="mt-1 truncate text-xs text-slate-400">
+                      {Array.isArray(track.artists) && track.artists.length > 0
+                        ? track.artists.join(", ")
+                        : t("profile.spotifyUnknownArtist")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-slate-400">
+                {connected ? t("profile.spotifyTracksEmptyConnected") : t("profile.spotifyTracksEmptyDisconnected")}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -415,57 +570,6 @@ function SavedRecommendationsPanel({ items, totalCount, activeFilter, setActiveF
   );
 }
 
-function SavedRecommendationCard({ item, onRemove, t }) {
-  const typeMeta = getSavedRecommendationTypeMeta(item.type, t);
-  return (
-    <motion.article
-      whileHover={{ y: -3 }}
-      className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4"
-      style={{ boxShadow: `0 18px 55px ${typeMeta.color}12` }}
-    >
-      <div className="flex gap-4">
-        <SavedRecommendationCover item={item} typeMeta={typeMeta} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full px-3 py-1 text-xs font-black" style={{ backgroundColor: `${typeMeta.color}20`, color: typeMeta.color }}>
-              {typeMeta.label}
-            </span>
-            <span className="text-xs text-slate-500">{formatSavedDate(item.savedAt, undefined, t)}</span>
-          </div>
-          <h3 className="mt-3 line-clamp-2 text-lg font-black text-white">{item.title}</h3>
-          {item.subtitle && <p className="mt-1 truncate text-sm text-slate-400">{item.subtitle}</p>}
-          {item.reason && <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{item.reason}</p>}
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-        {item.externalUrl && (
-          <a href={item.externalUrl} target="_blank" rel="noreferrer" className="btn-secondary flex-1 !px-4 !py-2">
-            {t("profile.open")}
-          </a>
-        )}
-        <button type="button" onClick={onRemove} className="btn-ghost flex-1 bg-red-400/10 text-red-100 hover:bg-red-400/20">
-          {t("profile.remove")}
-        </button>
-      </div>
-    </motion.article>
-  );
-}
-
-function SavedRecommendationCover({ item, typeMeta }) {
-  if (item.imageUrl) {
-    return <img src={item.imageUrl} alt={item.title} className="h-24 w-20 shrink-0 rounded-2xl object-cover shadow-xl shadow-slate-950/30" />;
-  }
-
-  return (
-    <div
-      className="flex h-24 w-20 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-lg font-black"
-      style={{ color: typeMeta.color, boxShadow: `inset 0 0 34px ${typeMeta.color}18` }}
-    >
-      {typeMeta.marker}
-    </div>
-  );
-}
 
 function AdminPanel({ adminOverview, adminError, isExporting, onExportCsv, t, language }) {
   const summary = adminOverview?.summary || {};
@@ -532,16 +636,16 @@ function DangerZone({
   const isDeleteReady = deleteText.trim().toUpperCase() === String(deleteConfirmationText).toUpperCase();
 
   return (
-    <section className="rounded-[1.75rem] border border-red-300/20 bg-red-400/10 p-6 shadow-2xl shadow-red-950/10">
+    <section className="rounded-[1.5rem] border border-red-300/20 bg-red-400/10 p-5 shadow-2xl shadow-red-950/10 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-2xl font-black text-red-50">{t("profile.deleteTitle")}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-red-100/80">
             {t("profile.deleteDescription")}
           </p>
         </div>
         {!showDeleteConfirm && (
-          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="btn-secondary border-red-200/30 text-red-50 hover:bg-red-300/10">
+          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="btn-secondary self-start border-red-200/30 text-red-50 hover:bg-red-300/10">
             {t("profile.deleteButton")}
           </button>
         )}
@@ -623,14 +727,18 @@ function InfoList({ title, items, emptyText }) {
 
 function ProfileSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        {[1, 2, 3, 4].map((item) => (
-          <div key={item} className="skeleton-card h-36" />
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {[1, 2, 3].map((item) => (
+          <div key={item} className="skeleton-card h-32" />
         ))}
       </div>
-      <div className="skeleton-card h-44" />
-      <div className="skeleton-card h-44" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(17rem,0.82fr)_minmax(0,1.18fr)]">
+        <div className="skeleton-card h-60" />
+        <div className="skeleton-card h-60" />
+        <div className="skeleton-card h-72" />
+        <div className="skeleton-card h-72" />
+      </div>
     </div>
   );
 }
@@ -655,20 +763,5 @@ function formatPercent(value) {
 }
 
 function formatDate(value, language, t) {
-  return value ? new Date(value).toLocaleDateString(language === "en" ? "en-US" : "tr-TR") : t("profile.newAccount");
-}
-
-function formatSavedDate(value, language = "tr", t) {
-  return value ? new Date(value).toLocaleDateString(language === "en" ? "en-US" : "tr-TR") : t?.("profile.today") || "Bugün";
-}
-
-function getSavedRecommendationTypeMeta(type, t) {
-  const meta = {
-    music: { label: t("profile.types.music"), marker: "M", color: "#38bdf8" },
-    movie: { label: t("profile.types.movie"), marker: "F", color: "#f59e0b" },
-    book: { label: t("profile.types.book"), marker: "K", color: "#a78bfa" },
-    advice: { label: t("profile.types.advice"), marker: "T", color: "#2dd4bf" },
-  };
-
-  return meta[type] || { ...meta.advice, label: t("profile.types.unknown") };
+  return value ? new Date(value).toLocaleDateString(String(language || "tr").startsWith("en") ? "en-US" : "tr-TR") : t("profile.newAccount");
 }

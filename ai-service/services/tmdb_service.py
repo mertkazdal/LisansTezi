@@ -113,6 +113,7 @@ async def get_movie_recommendations(
     emotion: str,
     context: str | None = None,
     language: str = "en",
+    queries: list[str] | None = None,
 ) -> list:
     normalized_emotion = normalize_emotion_key(emotion, "calm")
     compacted_context = compact_context(context, max_chars=200)
@@ -140,10 +141,24 @@ async def get_movie_recommendations(
             raise ValueError("TMDB API key not configured")
 
         movies = []
-        if compacted_context:
-            movies = await _search_movies(query, api_language)
-            if not movies and query != base_keyword:
-                movies = await _search_movies(base_keyword, api_language)
+        search_queries = [item for item in (queries or []) if item.strip()]
+        if compacted_context and query not in search_queries:
+            search_queries.append(query)
+        if base_keyword not in search_queries:
+            search_queries.append(base_keyword)
+
+        seen_ids: set[int] = set()
+        for search_query in search_queries[:4]:
+            for item in await _search_movies(search_query, api_language):
+                item_id = item.get("id")
+                if item_id in seen_ids:
+                    continue
+                seen_ids.add(item_id)
+                movies.append(item)
+                if len(movies) >= 8:
+                    break
+            if len(movies) >= 8:
+                break
 
         if not movies:
             movies = await _discover_movies(genre_str, api_language)

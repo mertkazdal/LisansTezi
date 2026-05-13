@@ -123,7 +123,11 @@ async def _search_tracks(token: str, query: str) -> list[dict]:
     return data.get("tracks", {}).get("items", [])
 
 
-async def get_music_recommendations(emotion: str, context: str | None = None) -> list:
+async def get_music_recommendations(
+    emotion: str,
+    context: str | None = None,
+    queries: list[str] | None = None,
+) -> list:
     normalized_emotion = normalize_emotion_key(emotion, "calm")
     compacted_context = compact_context(context, max_chars=180)
     base_query = MOOD_QUERIES.get(normalized_emotion, MOOD_QUERIES["calm"])
@@ -143,9 +147,23 @@ async def get_music_recommendations(emotion: str, context: str | None = None) ->
 
     try:
         token = await get_access_token()
-        items = await _search_tracks(token, query)
-        if query != base_query and not items:
-            items = await _search_tracks(token, base_query)
+        search_queries = [item for item in (queries or []) if item.strip()] or [query]
+        if base_query not in search_queries:
+            search_queries.append(base_query)
+
+        items = []
+        seen_ids: set[str] = set()
+        for search_query in search_queries[:4]:
+            for item in await _search_tracks(token, search_query):
+                item_id = item.get("id") or item.get("external_urls", {}).get("spotify")
+                if item_id in seen_ids:
+                    continue
+                seen_ids.add(item_id)
+                items.append(item)
+                if len(items) >= 8:
+                    break
+            if len(items) >= 8:
+                break
 
         tracks = _map_tracks(items)
         if tracks:

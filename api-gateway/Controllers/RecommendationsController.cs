@@ -14,11 +14,20 @@ public class RecommendationsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly AiServiceClient _aiClient;
+    private readonly GuestAnalysisStore _guestAnalysisStore;
+    private readonly GuestIdentityService _guestIdentityService;
 
-    public RecommendationsController(AppDbContext db, AiServiceClient aiClient)
+    public RecommendationsController(
+        AppDbContext db,
+        AiServiceClient aiClient,
+        GuestAnalysisStore guestAnalysisStore,
+        GuestIdentityService guestIdentityService
+    )
     {
         _db = db;
         _aiClient = aiClient;
+        _guestAnalysisStore = guestAnalysisStore;
+        _guestIdentityService = guestIdentityService;
     }
 
     [HttpGet("{historyId}")]
@@ -36,15 +45,36 @@ public class RecommendationsController : ControllerBase
             });
         }
 
+        if (userId == null)
+        {
+            var actorKey = _guestIdentityService.ResolveActorKey(HttpContext);
+            if (!_guestAnalysisStore.TryGet(historyId, actorKey, resolvedGuestSessionId, out var guestRecord) ||
+                guestRecord == null)
+            {
+                return NotFound(new { message = "Guest result expired or was not found." });
+            }
+
+            return Ok(new
+            {
+                historyId = guestRecord.HistoryId,
+                emotion = guestRecord.Emotion,
+                confidence = guestRecord.Confidence,
+                explanation = guestRecord.Explanation,
+                modalityUsed = guestRecord.ModalityUsed,
+                modelUsed = guestRecord.ModelUsed,
+                responseTimeMs = guestRecord.ResponseTimeMs,
+                faceDetected = guestRecord.FaceDetected,
+                warning = guestRecord.Warning,
+                music = guestRecord.Recommendations.Music,
+                movies = guestRecord.Recommendations.Movies,
+                books = guestRecord.Recommendations.Books,
+                lifeAdvice = guestRecord.Recommendations.LifeAdvice,
+                feedback = guestRecord.Feedback
+            });
+        }
+
         var historyQuery = _db.EmotionHistories.AsQueryable();
-        if (userId != null)
-        {
-            historyQuery = historyQuery.Where(h => h.Id == historyId && h.UserId == userId.Value);
-        }
-        else
-        {
-            historyQuery = historyQuery.Where(h => h.Id == historyId && h.GuestSessionId == resolvedGuestSessionId);
-        }
+        historyQuery = historyQuery.Where(h => h.Id == historyId && h.UserId == userId.Value);
 
         var history = await historyQuery.FirstOrDefaultAsync();
         if (history == null)
@@ -58,19 +88,33 @@ public class RecommendationsController : ControllerBase
         var feedback = await _db.AnalysisFeedback
             .AsNoTracking()
             .FirstOrDefaultAsync(item => item.HistoryId == historyId);
+        var currentUser = userId == null
+            ? null
+            : await _db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == userId.Value);
 
         string? warning = null;
         if (!HasCompleteRecommendations(recs))
         {
             try
             {
+                var recommendationContext = RecommendationSurveyService.BuildRecommendationContext(history.UserText, currentUser);
                 var recommendations = await _aiClient.GetRecommendationsAsync(
                     history.DetectedEmotion,
-                    history.UserText,
+                    recommendationContext,
                     GetPreferredLanguage(),
                     true
                 );
+                if (recommendations.TryGetProperty("coachComment", out var coachCommentProperty) &&
+                    coachCommentProperty.ValueKind == JsonValueKind.String)
+                {
+                    var coachComment = coachCommentProperty.GetString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(coachComment))
+                    {
+                        history.Explanation = coachComment;
+                    }
+                }
                 recs = await SaveRecommendationsAsync(historyId, recommendations, recs);
+                await _db.SaveChangesAsync();
             }
             catch (AiServiceException ex)
             {

@@ -50,14 +50,14 @@ def _normalize_language(language: str | None) -> str:
 
 def _invalid_image_message(language: str) -> str:
     if language == "tr":
-        return "Gecerli bir selfie okunamadi. Lutfen farkli bir fotografla tekrar dene."
+        return "Geçerli bir selfie okunamadı. Lütfen farklı bir fotoğrafla tekrar dene."
     return "A valid selfie could not be read. Please try again with another image."
 
 
 def _face_not_detected_message(language: str) -> str:
     if language == "tr":
         return (
-            "Selfiede belirgin bir yuz algilanamadi. Lutfen yuze odakli, daha net ve onden cekilmis bir fotograf dene."
+            "Selfie'de belirgin bir yüz algılanamadı. Lütfen yüze odaklı, daha net ve önden çekilmiş bir fotoğraf dene."
         )
     return (
         "No clear face could be detected in the selfie. Please try a sharper, front-facing photo."
@@ -66,7 +66,7 @@ def _face_not_detected_message(language: str) -> str:
 
 def _model_unavailable_message(language: str) -> str:
     if language == "tr":
-        return "Yerel yuz duygu modeli hazir degil. Lutfen daha sonra tekrar dene."
+        return "Yerel yüz duygu modeli hazır değil. Lütfen daha sonra tekrar dene."
     return "The local face emotion model is not ready yet. Please try again later."
 
 
@@ -74,8 +74,8 @@ def _analysis_explanation(language: str, emotion: str, confidence: float) -> str
     confidence_percent = round(confidence * 100)
     if language == "tr":
         return (
-            "Selfie, yerelde calisan yuz duygu modeli ile analiz edildi. "
-            f"Baskin duygu {emotion} olarak bulundu."
+            "Selfie, yerelde çalışan yüz duygu modeli ile analiz edildi. "
+            f"Baskın duygu {emotion} olarak bulundu."
         )
 
     return (

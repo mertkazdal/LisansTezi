@@ -13,6 +13,16 @@ namespace MoodLens.ApiGateway.Controllers;
 [Authorize]
 public class UserController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedColorThemes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "kirmizi",
+        "mavi",
+        "yesil",
+        "sari",
+        "siyah",
+        "beyaz"
+    };
+
     private readonly AppDbContext _db;
     private readonly AdminAccessService _adminAccessService;
 
@@ -40,6 +50,10 @@ public class UserController : ControllerBase
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
             .FirstOrDefaultAsync();
+        var personalityAvatarUrl = await _db.UserPersonalityProfiles
+            .Where(profile => profile.UserId == userId.Value)
+            .Select(profile => profile.AvatarUrl)
+            .FirstOrDefaultAsync();
         var isAdmin = _adminAccessService.IsAdmin(user.Email, user.Username);
 
         return Ok(new UserProfileResponse
@@ -47,14 +61,54 @@ public class UserController : ControllerBase
             Id = user.Id,
             Username = user.Username,
             Email = user.Email,
-            AvatarUrl = user.AvatarUrl,
+            AvatarUrl = string.IsNullOrWhiteSpace(personalityAvatarUrl) ? user.AvatarUrl : personalityAvatarUrl,
             CreatedAt = user.CreatedAt,
             TotalAnalyses = totalAnalyses,
             MostFrequentEmotion = mostFrequentEmotion,
             Role = isAdmin ? "admin" : "user",
             IsAdmin = isAdmin,
             CanDeleteAccount = true,
-            DeleteConfirmationText = "DELETE"
+            DeleteConfirmationText = "DELETE",
+            RecommendationSurvey = RecommendationSurveyService.ToResponse(user),
+            PreferredColorTheme = ResolvePreferredColorTheme(user.PreferredColorTheme)
+        });
+    }
+
+    [HttpPut("theme")]
+    public async Task<IActionResult> UpdateTheme([FromBody] UpdateColorThemeRequest? request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request?.ColorTheme))
+        {
+            return BadRequest(new
+            {
+                message = "Choose a supported color palette.",
+                code = "INVALID_COLOR_THEME"
+            });
+        }
+
+        var normalizedTheme = ResolvePreferredColorTheme(request.ColorTheme);
+        if (!AllowedColorThemes.Contains(normalizedTheme))
+        {
+            return BadRequest(new
+            {
+                message = "Choose a supported color palette.",
+                code = "INVALID_COLOR_THEME"
+            });
+        }
+
+        var user = await _db.Users.FirstOrDefaultAsync(item => item.Id == userId.Value);
+        if (user == null) return NotFound(new { message = "User not found." });
+
+        user.PreferredColorTheme = normalizedTheme;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            preferredColorTheme = user.PreferredColorTheme
         });
     }
 
@@ -100,5 +154,10 @@ public class UserController : ControllerBase
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(claim, out var id) ? id : null;
+    }
+
+    private static string ResolvePreferredColorTheme(string? colorTheme)
+    {
+        return string.IsNullOrWhiteSpace(colorTheme) ? "kirmizi" : colorTheme.Trim().ToLowerInvariant();
     }
 }

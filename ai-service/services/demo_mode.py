@@ -32,51 +32,51 @@ EMOTION_KEYWORDS = {
 
 EMOTION_COPY = {
     "happy": {
-        "tr": "Pozitif bir enerji goruluyor. Demo modunda metnindeki olumlu vurguya gore bu duygu secildi.",
+        "tr": "Pozitif bir enerji görülüyor. Demo modunda metnindeki olumlu vurguya göre bu duygu seçildi.",
         "en": "A positive tone stands out. In demo mode this emotion was selected from the upbeat cues in your text.",
     },
     "sad": {
-        "tr": "Metninde daha dusuk ve zorlayici bir ton var. Demo modunda uzgunluk eksenine yakin gorundun.",
+        "tr": "Metninde daha düşük ve zorlayıcı bir ton var. Demo modunda üzüntü eksenine yakın göründün.",
         "en": "Your text carries a lower and heavier tone. In demo mode it maps closest to sadness.",
     },
     "angry": {
-        "tr": "Metinde sertlik ve gerilim sinyalleri var. Demo modunda ofke ekseni secildi.",
+        "tr": "Metinde sertlik ve gerilim sinyalleri var. Demo modunda öfke ekseni seçildi.",
         "en": "Your text shows sharper tension signals. In demo mode it maps closest to anger.",
     },
     "anxious": {
-        "tr": "Belirsizlik ve kaygi tonu baskin. Demo modunda endise ekseni secildi.",
+        "tr": "Belirsizlik ve kaygı tonu baskın. Demo modunda endişe ekseni seçildi.",
         "en": "Uncertainty and worry are prominent. In demo mode it maps closest to anxiety.",
     },
     "excited": {
-        "tr": "Yuksek enerji ve beklenti hissi one cikiyor. Demo modunda heyecan ekseni secildi.",
+        "tr": "Yüksek enerji ve beklenti hissi öne çıkıyor. Demo modunda heyecan ekseni seçildi.",
         "en": "High energy and anticipation stand out. In demo mode it maps closest to excitement.",
     },
     "calm": {
-        "tr": "Daha dengeli ve yumusak bir ton var. Demo modunda sakin ekseni secildi.",
+        "tr": "Daha dengeli ve yumuşak bir ton var. Demo modunda sakin ekseni seçildi.",
         "en": "A more balanced and gentle tone appears. In demo mode it maps closest to calm.",
     },
     "tired": {
-        "tr": "Enerjinin dustugunu anlatan ifadeler var. Demo modunda yorgunluk ekseni secildi.",
+        "tr": "Enerjinin düştüğünü anlatan ifadeler var. Demo modunda yorgunluk ekseni seçildi.",
         "en": "Your words suggest low energy. In demo mode it maps closest to tiredness.",
     },
     "stressed": {
-        "tr": "Baski ve yuk hissi belirgin. Demo modunda stres ekseni secildi.",
+        "tr": "Baskı ve yük hissi belirgin. Demo modunda stres ekseni seçildi.",
         "en": "Pressure and overload are noticeable. In demo mode it maps closest to stress.",
     },
     "nostalgic": {
-        "tr": "Gecmise donuk duygusal bir ton var. Demo modunda nostalji ekseni secildi.",
+        "tr": "Geçmişe dönük duygusal bir ton var. Demo modunda nostalji ekseni seçildi.",
         "en": "There is an emotional look back toward the past. In demo mode it maps closest to nostalgia.",
     },
     "motivated": {
-        "tr": "Ilerleme ve hareket istegi belirgin. Demo modunda motivasyon ekseni secildi.",
+        "tr": "İlerleme ve hareket isteği belirgin. Demo modunda motivasyon ekseni seçildi.",
         "en": "A desire to move forward is clear. In demo mode it maps closest to motivation.",
     },
     "hopeful": {
-        "tr": "Ileriye donuk daha aydinlik bir ton var. Demo modunda umut ekseni secildi.",
+        "tr": "İleriye dönük daha aydınlık bir ton var. Demo modunda umut ekseni seçildi.",
         "en": "There is a more forward-looking and brighter tone. In demo mode it maps closest to hopefulness.",
     },
     "overwhelmed": {
-        "tr": "Yuk ve daginiklik hissi belirgin. Demo modunda bunalmislik ekseni secildi.",
+        "tr": "Yük ve dağınıklık hissi belirgin. Demo modunda bunalmışlık ekseni seçildi.",
         "en": "A sense of overload and scattered energy is clear. In demo mode it maps closest to overwhelm.",
     },
 }
@@ -129,11 +129,7 @@ BOOK_DATA = {
 
 def is_demo_mode() -> bool:
     raw_value = os.getenv("TEZFINAL_DEMO_MODE", "").strip().lower()
-    if raw_value in {"1", "true", "yes", "on"}:
-        return True
-    if raw_value in {"0", "false", "no", "off"}:
-        return False
-    return not bool(os.getenv("GEMINI_API_KEY", "").strip())
+    return raw_value in {"1", "true", "yes", "on"}
 
 
 def _normalize_language(language: str | None) -> str:
@@ -188,7 +184,7 @@ def analyze_demo(
         emotion = text_emotion or face_emotion or "calm"
         confidence = 0.79
         explanation = (
-            "Metin ve selfie birlikte degerlendirildi; son duygu metnin ve gorsel sinyalin ortak tonuna gore secildi."
+            "Metin ve selfie birlikte değerlendirildi; son duygu metnin ve görsel sinyalin ortak tonuna göre seçildi."
             if normalized_language == "tr"
             else "Text and selfie were evaluated together; the final emotion was selected from their shared tone."
         )
@@ -200,7 +196,7 @@ def analyze_demo(
         emotion = face_emotion or "calm"
         confidence = 0.72
         explanation = (
-            "Selfie odakli demo analizinde yuz sinyali tek basina yorumlandi."
+            "Selfie odaklı demo analizinde yüz sinyali tek başına yorumlandı."
             if normalized_language == "tr"
             else "In selfie-first demo analysis, the facial signal was interpreted on its own."
         )
@@ -230,7 +226,7 @@ def _build_music_items(emotion: str) -> list:
                 "artist": artist,
                 "image": None,
                 "spotify_url": None,
-                "reason": "Demo secimi: bu parca secilen ruh haline uygun bir tempo sunuyor.",
+                "reason": "Demo seçimi: bu parça seçilen ruh haline uygun bir tempo sunuyor.",
             }
         )
     return items
@@ -247,7 +243,7 @@ def _build_movie_items(emotion: str) -> list:
                 "rating": None,
                 "release_date": "",
                 "tmdb_url": None,
-                "reason": "Demo secimi: bu film secilen duygu tonuna uygun goruluyor.",
+                "reason": "Demo seçimi: bu film seçilen duygu tonuna uygun görülüyor.",
             }
         )
     return items
@@ -262,7 +258,7 @@ def _build_book_items(emotion: str) -> list:
                 "authors": [author],
                 "thumbnail": None,
                 "link": None,
-                "reason": "Demo secimi: bu kitap secilen ruh haliyle iyi eslesebilir.",
+                "reason": "Demo seçimi: bu kitap seçilen ruh haliyle iyi eşleşebilir.",
             }
         )
     return items
@@ -272,9 +268,9 @@ def _build_advice_items(emotion: str, language: str) -> list:
     normalized_language = _normalize_language(language)
     if normalized_language == "tr":
         return [
-            {"title": "Ritmini yavaslat", "description": f"{emotion} tonundayken kisa bir mola vermek netlik kazandirabilir.", "icon": "🌿"},
-            {"title": "Duyguyu adlandir", "description": "Bir iki cumleyle ne hissettigini yazmak yogunlugu azaltabilir.", "icon": "📝"},
-            {"title": "Kucuk bir adim sec", "description": "Bugun uygulayabilecegin tek bir kolay adim belirle.", "icon": "✨"},
+            {"title": "Ritmini yavaşlat", "description": f"{emotion} tonundayken kısa bir mola vermek netlik kazandırabilir.", "icon": "🌿"},
+            {"title": "Duyguyu adlandır", "description": "Bir iki cümleyle ne hissettiğini yazmak yoğunluğu azaltabilir.", "icon": "📝"},
+            {"title": "Küçük bir adım seç", "description": "Bugün uygulayabileceğin tek bir kolay adım belirle.", "icon": "✨"},
         ]
 
     return [

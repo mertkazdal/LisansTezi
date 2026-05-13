@@ -38,12 +38,6 @@ export default function LoginPage() {
       const data = await authAPI.login({ email: form.email.trim(), password: form.password });
       login(data.user, data.token);
 
-      if (data.migratedGuestAnalysesCount > 0) {
-        toast.success(t("auth.migrated", { count: data.migratedGuestAnalysesCount }));
-      } else if (data.guestDataMerged) {
-        toast.success(t("auth.merged"));
-      }
-
       toast.success(t("auth.loginSuccess"));
       navigate(from, { replace: true });
     } catch (err) {
@@ -54,8 +48,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="page-shell aurora-bg flex items-center justify-center">
-      <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: "easeOut" }} className="premium-card grid w-full max-w-6xl overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
+    <div className="auth-page page-shell aurora-bg flex items-center justify-center">
+      <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: "easeOut" }} className="surface-panel-strong grid w-full max-w-6xl overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
         <AuthTrustPanel eyebrow={t("auth.loginEyebrow")} title={t("auth.loginTitle")} description={t("auth.loginDescription")} returnLabel={returnLabel} guestUsed={guestUsed} hasGuestContext={hasGuestContext} trustItems={trustItems} t={t} />
 
         <div className="p-6 sm:p-9 lg:p-10">
@@ -94,12 +88,12 @@ function AuthTrustPanel({ eyebrow, title, description, returnLabel, guestUsed, h
         <p className="mt-5 text-base leading-8 text-slate-300">{description}</p>
         <div className="mt-8 space-y-3">
           {trustItems.map((item, index) => (
-            <motion.div key={item.title} initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.12 + index * 0.06 }} className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
+            <motion.div key={item.title} initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.12 + index * 0.06 }} className="surface-panel rounded-[1.45rem] p-4">
               <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-200/10 text-xs font-black text-cyan-100">0{index + 1}</span><div><p className="font-black text-white">{item.title}</p><p className="text-sm leading-6 text-slate-400">{item.description}</p></div></div>
             </motion.div>
           ))}
         </div>
-        <div className="mt-8 rounded-3xl border border-cyan-200/20 bg-cyan-200/10 p-5">
+        <div className="mt-8 rounded-3xl border border-cyan-200/20 bg-cyan-200/10 p-5 shadow-[0_16px_42px_rgba(45,212,191,0.08)]">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100/70">{t("auth.returnTarget")}</p>
           <p className="mt-2 text-xl font-black text-white">{returnLabel}</p>
           <p className="mt-2 text-sm leading-6 text-slate-400">{hasGuestContext ? t("auth.guestReady", { count: guestUsed }) : t("auth.secureStudioReturn")}</p>
@@ -118,7 +112,7 @@ function GuestMergeHint({ guestUsed, hasGuestContext, t }) {
 }
 
 function AuthError({ title, message }) {
-  return <div className="mb-4 rounded-2xl border border-red-300/20 bg-red-400/10 p-4" role="alert"><p className="text-sm font-black text-red-50">{title}</p><p className="mt-1 text-sm leading-6 text-red-100/85">{message}</p></div>;
+  return <div className="auth-error mb-4 rounded-2xl border p-4" role="alert"><p className="text-sm font-black">{title}</p><p className="mt-1 text-sm leading-6">{message}</p></div>;
 }
 
 function ButtonLoading({ label }) {

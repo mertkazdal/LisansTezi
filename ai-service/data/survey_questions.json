@@ -1,0 +1,42 @@
+{
+  "scale": {
+    "min": 1,
+    "max": 5,
+    "labels_tr": {
+      "1": "Kesinlikle katılmıyorum",
+      "2": "Katılmıyorum",
+      "3": "Kararsızım",
+      "4": "Katılıyorum",
+      "5": "Kesinlikle katılıyorum"
+    },
+    "labels_en": {
+      "1": "Strongly disagree",
+      "2": "Disagree",
+      "3": "Neutral",
+      "4": "Agree",
+      "5": "Strongly agree"
+    }
+  },
+  "questions": [
+    { "id": 1, "dimension": "openness", "text_tr": "Yeni fikirleri, sanat eserlerini veya farklı kültürleri keşfetmek beni heyecanlandırır.", "text_en": "Exploring new ideas, art, or different cultures excites me.", "reverse": false },
+    { "id": 2, "dimension": "openness", "text_tr": "Alışılmış yöntemler varken yeni yollar denemeyi gereksiz bulurum.", "text_en": "When familiar methods exist, I find trying new approaches unnecessary.", "reverse": true },
+    { "id": 3, "dimension": "openness", "text_tr": "Duygularımı ve deneyimlerimi derinlemesine düşünmeyi severim.", "text_en": "I enjoy reflecting deeply on my feelings and experiences.", "reverse": false },
+    { "id": 4, "dimension": "openness", "text_tr": "Soyut veya hayal gücü isteyen konular beni çabuk sıkar.", "text_en": "Abstract or imagination-heavy topics bore me quickly.", "reverse": true },
+    { "id": 5, "dimension": "conscientiousness", "text_tr": "Günlük işlerimi planlamak ve tamamlamak benim için önemlidir.", "text_en": "Planning and completing my daily tasks matters to me.", "reverse": false },
+    { "id": 6, "dimension": "conscientiousness", "text_tr": "Detaylara dikkat etmek yerine işleri akışına bırakırım.", "text_en": "I tend to go with the flow instead of paying attention to details.", "reverse": true },
+    { "id": 7, "dimension": "conscientiousness", "text_tr": "Verdiğim sözleri ve sorumlulukları takip ederim.", "text_en": "I follow through on promises and responsibilities.", "reverse": false },
+    { "id": 8, "dimension": "conscientiousness", "text_tr": "Dağınık bir ortamda bile düzen kurma ihtiyacı hissetmem.", "text_en": "Even in a messy environment, I do not feel a need to create order.", "reverse": true },
+    { "id": 9, "dimension": "extraversion", "text_tr": "İnsanlarla vakit geçirmek bana enerji verir.", "text_en": "Spending time with people gives me energy.", "reverse": false },
+    { "id": 10, "dimension": "extraversion", "text_tr": "Kalabalık ortamlardan sonra genellikle uzun süre yalnız kalmak isterim.", "text_en": "After crowded settings, I usually want to be alone for a long time.", "reverse": true },
+    { "id": 11, "dimension": "extraversion", "text_tr": "Yeni insanlarla sohbet başlatmak bana doğal gelir.", "text_en": "Starting conversations with new people feels natural to me.", "reverse": false },
+    { "id": 12, "dimension": "extraversion", "text_tr": "Dikkat merkezinde olmak beni çoğu zaman rahatsız eder.", "text_en": "Being the center of attention often makes me uncomfortable.", "reverse": true },
+    { "id": 13, "dimension": "agreeableness", "text_tr": "Bir anlaşmazlıkta karşı tarafın bakış açısını anlamaya çalışırım.", "text_en": "In a disagreement, I try to understand the other person's perspective.", "reverse": false },
+    { "id": 14, "dimension": "agreeableness", "text_tr": "İnsanların iyi niyetli olduğuna kolay kolay inanmam.", "text_en": "I do not easily believe that people have good intentions.", "reverse": true },
+    { "id": 15, "dimension": "agreeableness", "text_tr": "Yakınımdaki birinin zorlandığını fark edersem destek olmak isterim.", "text_en": "If I notice someone close to me struggling, I want to support them.", "reverse": false },
+    { "id": 16, "dimension": "agreeableness", "text_tr": "Haklı olduğumu düşündüğümde uzlaşmak benim için zordur.", "text_en": "When I believe I am right, compromising is hard for me.", "reverse": true },
+    { "id": 17, "dimension": "neuroticism", "text_tr": "Stresli durumlarda zihnim uzun süre aynı konuya takılı kalır.", "text_en": "In stressful situations, my mind stays stuck on the same issue for a long time.", "reverse": false },
+    { "id": 18, "dimension": "neuroticism", "text_tr": "Beklenmedik sorunlarda bile genellikle duygusal olarak dengede kalırım.", "text_en": "Even during unexpected problems, I usually stay emotionally steady.", "reverse": true },
+    { "id": 19, "dimension": "neuroticism", "text_tr": "Eleştiri aldığımda bunu kişisel olarak uzun süre taşıyabilirim.", "text_en": "When I receive criticism, I may carry it personally for a long time.", "reverse": false },
+    { "id": 20, "dimension": "neuroticism", "text_tr": "Kaygı veya gerginlik hissetsem bile hızlıca toparlanırım.", "text_en": "Even when I feel anxious or tense, I recover quickly.", "reverse": true }
+  ]
+}

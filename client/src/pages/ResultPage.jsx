@@ -98,6 +98,18 @@ export default function ResultPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const preferredTab = findFirstRecommendationTabKey(result?.recommendations);
+    if (!preferredTab) {
+      return;
+    }
+
+    const currentItems = result?.recommendations?.[activeTab] || [];
+    if (!Array.isArray(currentItems) || currentItems.length === 0) {
+      setActiveTab(preferredTab);
+    }
+  }, [activeTab, result]);
+
   if (isLoading) {
     return <ResultLoading t={t} />;
   }
@@ -107,6 +119,7 @@ export default function ResultPage() {
   }
 
   const emotion = getEmotionMeta(result.emotion, i18n.language);
+  const resultCopy = getResultScreenCopy(i18n.language);
   const recommendations = result.recommendations || DEFAULT_RECOMMENDATIONS;
   const recommendationBundleCount = countRecommendationItems(recommendations);
   const recommendationTabs = getRecommendationTabs(t);
@@ -166,7 +179,7 @@ export default function ResultPage() {
 
   return (
     <div
-      className="page-shell overflow-hidden"
+      className="page-shell app-page-tone result-page overflow-hidden"
       style={{
         background: `
           radial-gradient(circle at 18% 8%, ${emotion.auraFrom}, transparent 34rem),
@@ -176,14 +189,19 @@ export default function ResultPage() {
       }}
     >
       <div className="relative z-10 mx-auto max-w-7xl space-y-7">
-        <ResultHero emotion={emotion} result={result} recommendationBundleCount={recommendationBundleCount} t={t} />
-
-        <InsightPanel emotion={emotion} result={result} recommendationBundleCount={recommendationBundleCount} t={t} />
+        <ResultHero
+          emotion={emotion}
+          result={result}
+          recommendationBundleCount={recommendationBundleCount}
+          t={t}
+          warningText={result.warning}
+        />
 
         <RecommendationExplorer
           activeTab={activeTab}
           activeMeta={activeRecommendationMeta}
           accentColor={emotion.accentColor}
+          eyebrow={resultCopy.recommendationEyebrow}
           emotion={emotion}
           recommendations={recommendations}
           onChangeTab={setActiveTab}
@@ -211,6 +229,7 @@ export default function ResultPage() {
           savedCount={savedCountForResult}
           isDownloadingCard={isDownloadingCard}
           onDownloadCard={handleDownloadSummaryCard}
+          copy={resultCopy}
           t={t}
         />
       </div>
@@ -218,30 +237,15 @@ export default function ResultPage() {
   );
 }
 
-function ResultHero({ emotion, result, recommendationBundleCount, t }) {
+function ResultHero({ emotion, result, recommendationBundleCount, t, warningText }) {
   return (
     <motion.section
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55, ease: "easeOut" }}
-      className="premium-card relative overflow-hidden p-6 sm:p-8 lg:p-10"
+      transition={{ duration: 0.45, ease: "easeOut" }}
+      className="calm-card relative overflow-hidden p-6 sm:p-8"
     >
-      <motion.div
-        aria-hidden="true"
-        className="absolute -left-20 -top-20 h-72 w-72 rounded-full blur-3xl"
-        style={{ backgroundColor: emotion.auraFrom }}
-        animate={{ x: [0, 18, -8, 0], y: [0, 10, 18, 0], scale: [1, 1.08, 0.98, 1] }}
-        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        aria-hidden="true"
-        className="absolute -bottom-24 right-0 h-80 w-80 rounded-full blur-3xl"
-        style={{ backgroundColor: emotion.auraTo }}
-        animate={{ x: [0, -16, 10, 0], y: [0, -12, 8, 0], scale: [1, 1.12, 1] }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-      />
-
-      <div className="relative grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+      <div className="relative grid gap-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="section-eyebrow">{t("result.aiComplete")}</span>
@@ -253,19 +257,16 @@ function ResultHero({ emotion, result, recommendationBundleCount, t }) {
             </span>
           </div>
 
-          <h1 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
+          <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-5xl">
             {emotion.label}
-            <span className="gradient-text block text-3xl sm:text-4xl lg:text-5xl">{t("result.customResult")}</span>
+            <span className="gradient-text block text-2xl sm:text-3xl">{t("result.customResult")}</span>
           </h1>
 
-          <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-300">{emotion.message}</p>
-          <p className="mt-4 max-w-3xl rounded-3xl border border-white/10 bg-white/[0.06] p-4 text-sm leading-7 text-slate-300">
-            {emotion.resultTone}
-          </p>
+          <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300">{emotion.message}</p>
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-[auto_1fr] lg:grid-cols-1">
-          <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
             <HeroInsightCard
               label={t("result.analysisType")}
               value={getResultAnalysisTypeLabel(result.modalityUsed, t)}
@@ -281,18 +282,24 @@ function ResultHero({ emotion, result, recommendationBundleCount, t }) {
               value={String(recommendationBundleCount)}
               accentColor={emotion.accentColor}
             />
-            <HeroInsightCard
-              label={t("result.responseTime")}
-              value={result.responseTimeMs ? `${result.responseTimeMs} ms` : "—"}
-              accentColor={emotion.accentColor}
-            />
           </div>
 
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5">
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-400">{t("result.coachComment")}</p>
-            <p className="mt-3 text-base font-semibold leading-7 text-white">{emotion.coachPrompt}</p>
+          {warningText && (
+            <WarningAlertCard
+              title={t("result.warningNote")}
+              hint={t("result.warningHint")}
+              text={warningText}
+            />
+          )}
+
+          <div className="surface-panel rounded-[1.7rem] p-5">
+            <p className="text-xs font-black uppercase tracking-[0.28em]" style={{ color: emotion.accentColor }}>{t("result.coachComment")}</p>
+            <p className="mt-3 text-base font-semibold leading-7 text-white">{result.explanation || emotion.coachPrompt}</p>
+            {emotion.resultTone && (
+              <p className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm leading-7 text-slate-400">{emotion.resultTone}</p>
+            )}
             {result.responseTimeMs && (
-              <p className="mt-4 text-xs text-slate-500">{t("result.responseTime")}: {result.responseTimeMs} ms</p>
+              <p className="mt-3 text-xs text-slate-500">{t("result.responseTime")}: {result.responseTimeMs} ms</p>
             )}
           </div>
         </div>
@@ -311,110 +318,26 @@ function HeroInsightCard({ label, value, accentColor }) {
   );
 }
 
-function InsightPanel({ emotion, result, recommendationBundleCount, t }) {
-  const metrics = [
-    {
-      label: t("result.analysisType"),
-      value: getResultAnalysisTypeLabel(result.modalityUsed, t),
-      detail: t("result.analysisType"),
-    },
-    {
-      label: t("result.model"),
-      value: result.modelUsed || "gemini-multimodal",
-      detail: t("result.model"),
-    },
-    {
-      label: t("result.faceDetection"),
-      value: result.faceDetected ? t("result.faceDetected") : t("result.faceUnknown"),
-      detail: t("result.faceDetection"),
-    },
-    {
-      label: t("result.selectedForYou"),
-      value: String(recommendationBundleCount),
-      detail: t("result.recommendationsDescription"),
-    },
-  ];
-
+function WarningAlertCard({ title, hint, text }) {
   return (
-    <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-        className="premium-card p-6"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-100/70">{t("result.insightPanel")}</p>
-            <h2 className="mt-3 text-2xl font-black text-white">{t("result.insightPanel")}</h2>
+    <div className="relative overflow-hidden rounded-[2rem] border border-amber-200/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.18),rgba(15,23,42,0.92))] p-6 shadow-[0_24px_80px_rgba(245,158,11,0.14)]">
+      <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-amber-200/12 blur-3xl" />
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] border border-amber-100/35 bg-amber-200/14 text-2xl font-black text-amber-100 shadow-[0_0_28px_rgba(251,191,36,0.24)]">
+          !
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded-full bg-amber-200 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-slate-950">
+              {title}
+            </span>
+            <span className="text-xs font-bold uppercase tracking-[0.22em] text-amber-100/80">
+              {hint}
+            </span>
           </div>
-          <span
-            className="h-3 w-3 rounded-full shadow-lg"
-            style={{ backgroundColor: emotion.accentColor, boxShadow: `0 0 24px ${emotion.accentColor}` }}
-          />
+          <p className="mt-4 text-sm leading-7 text-amber-50">{text}</p>
         </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          {metrics.map((item) => (
-            <InsightMetric key={item.label} item={item} accentColor={emotion.accentColor} />
-          ))}
-        </div>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12 }}
-        className="space-y-4"
-      >
-        {result.warning && (
-          <NarrativeCard
-            title={t("result.warningNote")}
-            text={result.warning}
-            accentColor="#f59e0b"
-            tone="warning"
-          />
-        )}
-        {result.explanation && (
-          <NarrativeCard
-            title={t("result.coachComment")}
-            text={result.explanation}
-            accentColor={emotion.accentColor}
-          />
-        )}
-        {!result.explanation && !result.warning && (
-          <NarrativeCard
-            title={t("result.coachComment")}
-            text={emotion.coachPrompt}
-            accentColor={emotion.accentColor}
-          />
-        )}
-      </motion.div>
-    </section>
-  );
-}
-
-function InsightMetric({ item, accentColor }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.055] p-4">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{item.label}</p>
-      <p className="mt-2 text-lg font-black text-white">{item.value}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-400">{item.detail}</p>
-      <div className="mt-4 h-1 rounded-full" style={{ background: `linear-gradient(90deg, ${accentColor}, transparent)` }} />
-    </div>
-  );
-}
-
-function NarrativeCard({ title, text, accentColor, tone = "default" }) {
-  return (
-    <div
-      className={`premium-card p-6 ${tone === "warning" ? "border-amber-200/20" : ""}`}
-      style={{ boxShadow: `0 22px 70px ${accentColor}18` }}
-    >
-      <p className="text-xs font-black uppercase tracking-[0.28em]" style={{ color: accentColor }}>
-        {title}
-      </p>
-      <p className="mt-3 text-sm leading-7 text-slate-300">{text}</p>
+      </div>
     </div>
   );
 }
@@ -423,6 +346,7 @@ function RecommendationExplorer({
   activeTab,
   activeMeta,
   accentColor,
+  eyebrow,
   emotion,
   recommendations,
   onChangeTab,
@@ -439,18 +363,15 @@ function RecommendationExplorer({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.16 }}
-      className="premium-card overflow-hidden p-6 sm:p-7"
+      className="surface-panel-strong overflow-hidden p-6 sm:p-7"
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="section-eyebrow">{t("result.selectedForYou")}</p>
-          <h2 className="mt-4 text-3xl font-black text-white">{t("result.selectedForYou")}</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            {t("result.recommendationsDescription")}
-          </p>
+          <p className="section-eyebrow">{eyebrow}</p>
+          <h2 className="mt-4 text-3xl font-black text-white">{t("result.recommendationsDescription")}</h2>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.05] p-1.5">
+        <div className="grid grid-cols-2 gap-2 rounded-3xl border border-white/10 bg-white/[0.05] p-1.5 sm:flex sm:overflow-x-auto">
           {tabs.map((tab) => {
             const active = activeTab === tab.key;
             return (
@@ -459,9 +380,9 @@ function RecommendationExplorer({
                 type="button"
                 onClick={() => onChangeTab(tab.key)}
                 aria-pressed={active}
-                className={`focus-ring relative min-w-24 rounded-2xl px-4 py-3 text-left transition ${
-                  active ? "text-white" : "text-slate-400 hover:text-white"
-                }`}
+                  className={`focus-ring relative min-w-0 rounded-2xl px-4 py-3 text-left transition sm:min-w-24 ${
+                    active ? "text-white" : "text-slate-400 hover:text-white"
+                  }`}
               >
                 {active && (
                   <motion.span
@@ -616,7 +537,7 @@ function MovieRecommendations({ items = [], accentColor, emotion, sourceHistoryI
               title={item.title}
               fallback="F"
               accentColor={accentColor}
-              className="aspect-[2/3] w-full"
+              className="h-[13.5rem] w-full"
             />
             <div className="w-full">
               <p className="mt-4 line-clamp-1 text-base font-black text-white">{item.title}</p>
@@ -707,11 +628,10 @@ function AdviceRecommendations({ items = [], accentColor, emotion, sourceHistory
 function RecommendationShell({ href, accentColor, layout = "horizontal", savedItem, saved, onToggleSaved, children }) {
   return (
     <motion.article
-      whileHover={{ y: -4 }}
-      className={`group relative flex snap-start overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 transition ${
-        layout === "vertical" ? "min-w-[17rem] flex-col sm:min-w-[19rem]" : "min-w-[20rem] items-center gap-4 sm:min-w-[26rem]"
+      className={`group relative flex snap-start overflow-hidden rounded-[1.35rem] border border-white/10 bg-white/[0.055] p-4 transition ${
+        layout === "vertical" ? "w-[15.5rem] flex-none flex-col sm:w-[16.5rem]" : "min-w-[17rem] items-center gap-4 sm:min-w-[23rem]"
       }`}
-      style={{ boxShadow: `0 18px 55px ${accentColor}10` }}
+      style={{ boxShadow: `0 12px 34px ${accentColor}0f` }}
     >
       <span
         aria-hidden="true"
@@ -730,7 +650,7 @@ function RecommendationShell({ href, accentColor, layout = "horizontal", savedIt
         style={{
           borderColor: saved ? `${accentColor}88` : "rgba(255,255,255,0.16)",
           backgroundColor: saved ? `${accentColor}24` : "rgba(15,23,42,0.78)",
-          color: saved ? "#ffffff" : "#cbd5e1",
+          color: saved ? "var(--theme-text)" : "var(--theme-text-muted)",
           boxShadow: saved ? `0 0 28px ${accentColor}35` : "none",
         }}
       >
@@ -795,7 +715,7 @@ function MediaCover({ imageUrl, title, fallback, accentColor, className }) {
       <img
         src={imageUrl}
         alt={title}
-        className={`shrink-0 rounded-2xl object-cover shadow-xl shadow-slate-950/30 ${className}`}
+        className={`recommendation-cover shrink-0 rounded-2xl object-cover shadow-xl shadow-slate-950/20 ${className}`}
       />
     );
   }
@@ -835,8 +755,7 @@ function FeedbackPanel({ accentColor, feedback, feedbackForm, isSubmittingFeedba
     >
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="section-eyebrow">{t("feedback.title")}</p>
-          <h2 className="mt-4 text-3xl font-black text-white">{t("feedback.title")}</h2>
+          <h2 className="text-3xl font-black text-white">{t("feedback.title")}</h2>
           <p className="mt-2 text-sm text-slate-400">{t("feedback.description")}</p>
         </div>
         {feedback?.createdAt && (
@@ -919,7 +838,7 @@ function RatingSelector({ label, value, onChange, accentColor }) {
   return (
     <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4">
       <p className="mb-3 text-sm font-bold text-white">{label}</p>
-      <div className="grid grid-cols-5 gap-2">
+      <div className="rating-grid grid grid-cols-5 gap-2">
         {[1, 2, 3, 4, 5].map((rating) => {
           const selected = value === rating;
           return (
@@ -934,7 +853,7 @@ function RatingSelector({ label, value, onChange, accentColor }) {
               style={{
                 borderColor: selected ? accentColor : "rgba(255,255,255,0.12)",
                 backgroundColor: selected ? accentColor : "rgba(255,255,255,0.05)",
-                color: selected ? "#020617" : "#cbd5e1",
+                color: selected ? "var(--theme-primary-foreground)" : "var(--theme-text-muted)",
                 boxShadow: selected ? `0 0 24px ${accentColor}35` : "none",
               }}
             >
@@ -974,7 +893,7 @@ function ToggleButton({ active, accentColor, onClick, children }) {
       style={{
         borderColor: active ? accentColor : "rgba(255,255,255,0.12)",
         backgroundColor: active ? `${accentColor}22` : "rgba(255,255,255,0.045)",
-        color: active ? "#ffffff" : "#94a3b8",
+        color: active ? "var(--theme-text)" : "var(--theme-text-muted)",
       }}
     >
       {children}
@@ -982,53 +901,82 @@ function ToggleButton({ active, accentColor, onClick, children }) {
   );
 }
 
-function NextStepCtas({ isLoggedIn, navigate, accentColor, savedCount, isDownloadingCard, onDownloadCard, t }) {
+function NextStepCtas({ isLoggedIn, navigate, accentColor, savedCount, isDownloadingCard, onDownloadCard, copy, t }) {
   return (
-    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <ActionCard
-        title={t("result.newAnalysis")}
-        description="Duygu durumunu tekrar ölç ve önerilerini güncelle."
-        actionLabel={t("actions.startAnalysis")}
-        accentColor={accentColor}
-        onClick={() => navigate("/analyze")}
-      />
-      <ActionCard
-        title={isLoggedIn ? t("result.goHistory") : t("result.loginToSave")}
-        description={isLoggedIn ? "Önceki analizlerinle bugünkü sonucu karşılaştır." : "Analiz geçmişini korumak için giriş yap."}
-        actionLabel={isLoggedIn ? t("result.goHistory") : t("actions.login")}
-        accentColor={accentColor}
-        onClick={() => {
-          if (isLoggedIn) {
-            navigate("/history");
-          } else {
-            navigate("/login", { state: { from: "/history" } });
-          }
-        }}
-      />
-      <ActionCard
-        title={t("result.summaryCard")}
-        description="Duygu sonucunu kişisel metnini paylaşmadan premium PNG kart olarak kaydet."
-        actionLabel={isDownloadingCard ? t("actions.preparing") : t("actions.downloadPng")}
-        accentColor={accentColor}
-        onClick={onDownloadCard}
-        disabled={isDownloadingCard}
-      />
-      <ActionCard
-        title={t("result.savedRecommendations")}
-        description={
-          savedCount > 0
-            ? `Bu analizden ${savedCount} öneri bu cihazda saklandı.`
-            : "Beğendiğin önerileri kaydet; profil panelinde bu cihazdan tekrar görebilirsin."
-        }
-        actionLabel={isLoggedIn ? t("navigation.profile") : t("actions.login")}
-        accentColor={accentColor}
-        onClick={() => navigate("/profile")}
-      />
-    </section>
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.28 }}
+      className="no-print"
+    >
+      <p className="section-eyebrow mb-5">{t("result.newAnalysis")}</p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ActionCard
+          title={t("result.newAnalysis")}
+          description={copy.newAnalysisDescription}
+          actionLabel={t("actions.startAnalysis")}
+          accentColor={accentColor}
+          onClick={() => navigate("/analyze")}
+        />
+        <ActionCard
+          title={isLoggedIn ? t("result.goHistory") : t("result.loginToSave")}
+          description={isLoggedIn ? copy.historyDescription : copy.loginDescription}
+          actionLabel={isLoggedIn ? t("result.goHistory") : t("actions.login")}
+          accentColor={accentColor}
+          onClick={() => {
+            if (isLoggedIn) {
+              navigate("/history");
+            } else {
+              navigate("/login", { state: { from: "/history" } });
+            }
+          }}
+        />
+        <ActionCard
+          title={t("result.summaryCard")}
+          description={copy.summaryDescription}
+          accentColor={accentColor}
+        >
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onDownloadCard}
+              disabled={isDownloadingCard}
+              className="inline-flex rounded-2xl px-4 py-2 text-sm font-black transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ backgroundColor: `${accentColor}22`, color: "var(--theme-text)" }}
+            >
+              {isDownloadingCard ? t("actions.preparing") : t("actions.downloadPng")}
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                window.print();
+              }}
+              className="inline-flex rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-2 text-sm font-black text-slate-300 transition hover:bg-white/[0.1]"
+            >
+              {copy.pdfLabel}
+            </button>
+          </div>
+        </ActionCard>
+      </div>
+    </motion.section>
   );
 }
 
-function ActionCard({ title, description, actionLabel, onClick, accentColor, disabled = false }) {
+function ActionCard({ title, description, actionLabel, onClick, accentColor, disabled = false, children }) {
+  if (children) {
+    return (
+      <div
+        className="premium-card p-5 text-left"
+        style={{ boxShadow: `0 24px 70px ${accentColor}14` }}
+      >
+        <p className="text-xl font-black text-white">{title}</p>
+        <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -1040,16 +988,20 @@ function ActionCard({ title, description, actionLabel, onClick, accentColor, dis
     >
       <p className="text-xl font-black text-white">{title}</p>
       <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
-      <span className="mt-5 inline-flex rounded-2xl px-4 py-2 text-sm font-black" style={{ backgroundColor: `${accentColor}22`, color: "#fff" }}>
-        {actionLabel}
-      </span>
+      {children || (
+        actionLabel && (
+          <span className="mt-5 inline-flex rounded-2xl px-4 py-2 text-sm font-black" style={{ backgroundColor: `${accentColor}22`, color: "var(--theme-text)" }}>
+            {actionLabel}
+          </span>
+        )
+      )}
     </button>
   );
 }
 
 function ResultLoading({ t }) {
   return (
-    <div className="page-shell flex items-center justify-center">
+    <div className="page-shell aurora-bg app-page-tone result-page flex items-center justify-center">
       <div className="premium-card w-full max-w-md p-8 text-center">
         <span className="orb mx-auto h-16 w-16" aria-hidden="true">
           <span className="relative z-10 h-3 w-3 rounded-full bg-cyan-100" />
@@ -1068,7 +1020,7 @@ function ResultLoading({ t }) {
 
 function ResultError({ error, onRetry, t }) {
   return (
-    <div className="page-shell flex items-center justify-center">
+    <div className="page-shell aurora-bg app-page-tone result-page flex items-center justify-center">
       <div className="premium-card w-full max-w-lg p-8 text-center">
         <p className="section-eyebrow mx-auto w-fit">{t("states.error")}</p>
         <h1 className="mt-5 text-2xl font-black text-white">{t("result.errorTitle")}</h1>
@@ -1130,4 +1082,32 @@ function getRecommendationTabs(t) {
     { key: "book", marker: "K", label: t("result.recommendations.book.label"), description: t("result.recommendations.book.description") },
     { key: "advice", marker: "T", label: t("result.recommendations.advice.label"), description: t("result.recommendations.advice.description") },
   ];
+}
+
+function findFirstRecommendationTabKey(recommendations) {
+  const source = recommendations || DEFAULT_RECOMMENDATIONS;
+  return ["music", "movie", "book", "advice"].find((key) => Array.isArray(source[key]) && source[key].length > 0) || "music";
+}
+
+function getResultScreenCopy(language) {
+  const isEnglish = String(language || "tr").startsWith("en");
+  if (isEnglish) {
+    return {
+      recommendationEyebrow: "Recommendation bundle",
+      newAnalysisDescription: "Run a fresh emotion scan and refresh your recommendation mix.",
+      historyDescription: "Compare today with your earlier analyses in your own private history.",
+      loginDescription: "Sign in to keep account-based history and revisit future results securely.",
+      summaryDescription: "Keep the result as a polished PNG card or printable PDF summary.",
+      pdfLabel: "Download PDF",
+    };
+  }
+
+  return {
+    recommendationEyebrow: "Öneri paketi",
+    newAnalysisDescription: "Duygu durumunu yeniden tara ve önerilerini taze bir akışla güncelle.",
+    historyDescription: "Bugünkü sonucu önceki analizlerinle kendi geçmiş ekranında karşılaştır.",
+    loginDescription: "Hesap geçmişini korumak ve sonraki sonuçlara güvenli dönmek için giriş yap.",
+    summaryDescription: "Sonucu düzenli bir PNG kartı ya da yazdırılabilir PDF özeti olarak al.",
+    pdfLabel: "PDF İndir",
+  };
 }

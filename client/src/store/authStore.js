@@ -29,6 +29,18 @@ export const useAuthStore = create((set) => ({
     set({ user, accessToken, isLoggedIn: true });
   },
 
+  updateUser: (updates) => {
+    set((state) => {
+      if (!state.user) {
+        return state;
+      }
+
+      const nextUser = { ...state.user, ...updates };
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      return { user: nextUser };
+    });
+  },
+
   logout: () => {
     clearStoredSession();
     resetGuestQuotaState();

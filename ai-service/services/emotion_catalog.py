@@ -5,12 +5,14 @@ from functools import lru_cache
 from pathlib import Path
 
 
-CATALOG_PATH = Path(__file__).resolve().parents[2] / "shared" / "emotion_contract.json"
+AI_SERVICE_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "data" / "emotion_contract.json"
+SHARED_CONTRACT_PATH = Path(__file__).resolve().parents[2] / "shared" / "emotion_contract.json"
 
 
 @lru_cache(maxsize=1)
 def load_emotion_contract() -> dict:
-    with CATALOG_PATH.open("r", encoding="utf-8") as handle:
+    contract_path = AI_SERVICE_CONTRACT_PATH if AI_SERVICE_CONTRACT_PATH.exists() else SHARED_CONTRACT_PATH
+    with contract_path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -34,4 +36,3 @@ def normalize_emotion_key(value: str | None, fallback: str = "calm") -> str:
 
 def is_valid_emotion(value: str | None) -> bool:
     return (value or "").strip().lower() in VALID_EMOTION_SET
-

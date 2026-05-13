@@ -21,6 +21,7 @@ Bu proje, kullanicinin `selfie`, `metin` veya `ikisini birlikte` girmesiyle duyg
 - `api-gateway`: .NET 8 API, auth, history, metrics ve recommendation gateway
 - `ai-service`: FastAPI tabanli duygu analizi ve onerı orkestrasyonu
 - `client`: Vite + React arayuzu
+- `nihaitezmobil`: Flutter tabanli mobil istemci; web/backend kontratlarini kullanir
 - `database`: eski manuel SQL referansi
 
 ## Analiz Modlari
@@ -42,9 +43,10 @@ Bu proje, kullanicinin `selfie`, `metin` veya `ikisini birlikte` girmesiyle duyg
 
 1. Misafir kullanici `analyze` ekranina girer.
 2. Selfie, metin veya ikisini birlikte kullanarak analiz yapar.
-3. Backend `guestSessionId` ile kullanim sayisini izler.
+3. Backend misafir kotasini yalnizca client tarafindaki `guestSessionId` ile degil, sunucu tarafinda uretilen kisa parmak iziyle izler.
 4. Ilk `3` analiz ucretsizdir.
 5. `4.` denemede API `GUEST_QUOTA_EXCEEDED` doner ve arayuz kullaniciyi girise yonlendirir.
+6. Misafir analizleri veritabaninda kalici gecmis olarak tutulmaz; sonuc sayfasi icin kisa sureli bellek kaydi kullanilir.
 
 ## Veritabani ve Migration
 

@@ -11,6 +11,10 @@ public class AppDbContext : DbContext
     public DbSet<EmotionHistory> EmotionHistories { get; set; } = null!;
     public DbSet<Recommendation> Recommendations { get; set; } = null!;
     public DbSet<AnalysisFeedback> AnalysisFeedback { get; set; } = null!;
+    public DbSet<UserPersonalityProfile> UserPersonalityProfiles { get; set; } = null!;
+    public DbSet<AnalysisRecord> AnalysisRecords { get; set; } = null!;
+    public DbSet<PersonalityUpdateLog> PersonalityUpdateLogs { get; set; } = null!;
+    public DbSet<UserMediaLog> UserMediaLogs { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +30,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.PreferredColorTheme).HasDefaultValue("kirmizi");
         });
 
         // EmotionHistory
@@ -104,6 +109,84 @@ public class AppDbContext : DbContext
                   .WithMany(u => u.FeedbackEntries)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<UserPersonalityProfile>(entity =>
+        {
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.BigFiveJson).HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.RawSurveyAnswers).HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.LastUpdated).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                  .WithOne(u => u.PersonalityProfile)
+                  .HasForeignKey<UserPersonalityProfile>(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AnalysisRecord>(entity =>
+        {
+            entity.ToTable(tableBuilder =>
+            {
+                tableBuilder.HasCheckConstraint(
+                    "CK_analysis_records_input_type",
+                    "\"input_type\" IN ('image', 'text', 'both')"
+                );
+                tableBuilder.HasCheckConstraint(
+                    "CK_analysis_records_emotion_result",
+                    "\"emotion_result\" IN ('happy', 'sad', 'angry', 'anxious', 'excited', 'calm', 'tired', 'stressed', 'nostalgic', 'motivated', 'hopeful', 'overwhelmed')"
+                );
+                tableBuilder.HasCheckConstraint(
+                    "CK_analysis_records_status",
+                    "\"status\" IN ('complete', 'partial', 'failed')"
+                );
+            });
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.SessionId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.ShareToken).IsUnique().HasFilter("\"share_token\" IS NOT NULL");
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.ConflictDetected).HasDefaultValue(false);
+            entity.Property(e => e.RecommendationsJson).HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.Language).HasDefaultValue("tr");
+            entity.Property(e => e.Status).HasDefaultValue("complete");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.AnalysisRecords)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PersonalityUpdateLog>(entity =>
+        {
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.UpdatedAt);
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.PersonalityUpdateLogs)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserMediaLog>(entity =>
+        {
+            entity.ToTable(tableBuilder =>
+            {
+                tableBuilder.HasCheckConstraint(
+                    "CK_user_media_log_type",
+                    "\"type\" IN ('film', 'book')"
+                );
+            });
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.LoggedAt);
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.LoggedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.MediaLogs)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

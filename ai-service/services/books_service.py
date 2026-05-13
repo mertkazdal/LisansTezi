@@ -99,6 +99,7 @@ async def get_book_recommendations(
     emotion: str,
     context: str | None = None,
     language: str = "en",
+    queries: list[str] | None = None,
 ) -> list:
     normalized_emotion = normalize_emotion_key(emotion, "calm")
     normalized_language = _normalize_language(language)
@@ -120,9 +121,23 @@ async def get_book_recommendations(
     stale_books = await BOOKS_CACHE.get(cache_key, allow_stale=True)
 
     try:
-        items = await _fetch_books(query, normalized_language)
-        if query != base_query and not items:
-            items = await _fetch_books(base_query, normalized_language)
+        search_queries = [item for item in (queries or []) if item.strip()] or [query]
+        if base_query not in search_queries:
+            search_queries.append(base_query)
+
+        items = []
+        seen_ids: set[str] = set()
+        for search_query in search_queries[:4]:
+            for item in await _fetch_books(search_query, normalized_language):
+                item_id = item.get("id") or item.get("selfLink")
+                if item_id in seen_ids:
+                    continue
+                seen_ids.add(item_id)
+                items.append(item)
+                if len(items) >= 8:
+                    break
+            if len(items) >= 8:
+                break
 
         books = _map_books(items)
         if books:

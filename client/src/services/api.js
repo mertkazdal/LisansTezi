@@ -1,10 +1,13 @@
 import axios from "axios";
 import {
+  clearAnalysisCooldown,
+  getAnalysisCooldownRemainingSeconds,
   getDefaultGuestLimit,
   getGuestRemainingAnalyses,
   getGuestSessionId,
   resetGuestQuotaState,
   resetGuestSessionState,
+  setAnalysisCooldown,
   setGuestRemainingAnalyses,
 } from "../lib/guestSession";
 
@@ -12,6 +15,25 @@ export const ACCESS_TOKEN_KEY = "access_token";
 export const USER_KEY = "tezfinal_user";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+
+const USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR = {
+  UNSUPPORTED_IMAGE_TYPE: "Bu dosya formatı desteklenmiyor. Lütfen JPG, PNG veya WebP formatında bir fotoğraf yükle.",
+  UNSUPPORTED_IMAGE_MIME_TYPE: "Bu dosya formatı desteklenmiyor. Lütfen JPG, PNG veya WebP formatında bir fotoğraf yükle.",
+  INVALID_IMAGE: "Fotoğraf okunamadı. Lütfen farklı bir görsel dene.",
+  IMAGE_TOO_LARGE: "Fotoğraf boyutu çok büyük. Maksimum 10 MB yükleyebilirsin.",
+  NO_FACE_DETECTED: "Fotoğrafta yüz bulunamadı. Lütfen yüzün net göründüğü bir selfie yükle.",
+  MULTIPLE_FACES_DETECTED: "Fotoğrafta birden fazla yüz var. Lütfen yalnızca senin yüzünün göründüğü bir fotoğraf yükle.",
+  FACE_TOO_SMALL: "Yüzün kadrajda çok küçük görünüyor. Biraz yaklaşarak tekrar dene.",
+  FACE_MODEL_UNAVAILABLE: "Görsel analiz şu an kullanılamıyor. Metin ile devam edebilirsin.",
+  IMAGE_UNPROCESSABLE: "Görsel işlenemedi. Metin ekleyerek analizi tamamlayabilirsin.",
+  AI_INVALID_RESPONSE: "Analiz sırasında bir sorun oluştu. Lütfen tekrar dene.",
+  SURVEY_REQUIRED: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",
+  survey_required: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",
+  GUEST_QUOTA_EXCEEDED: "3 analiz hakkını kullandın. Devam etmek için ücretsiz hesap oluşturabilirsin.",
+};
+
+const PARTIAL_ANALYSIS_MESSAGE_TR =
+  "Analizin tamamlandı! Ancak bazı öneriler şu an getirilemedi. Duygu durumun ve koç tavsiyesi aşağıda hazır.";
 
 function getStoredToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -59,25 +81,89 @@ const TURKISH_DISPLAY_REPLACEMENTS = [
   ["Bugun", "Bugün"],
 ];
 
+const TURKISH_DISPLAY_REGEX_REPLACEMENTS = [
+  [/\bmuzik\b/g, "müzik"],
+  [/\bMuzik\b/g, "Müzik"],
+  [/\bsans\b/g, "şans"],
+  [/\bSans\b/g, "Şans"],
+  [/\bkagit\b/g, "kağıt"],
+  [/\bKagit\b/g, "Kağıt"],
+  [/\bkagıt\b/g, "kağıt"],
+  [/\bKagıt\b/g, "Kağıt"],
+  [/\byasam kocu\b/g, "yaşam koçu"],
+  [/\bYasam Kocu\b/g, "Yaşam Koçu"],
+  [/\boneriler\b/g, "öneriler"],
+  [/\bOneriler\b/g, "Öneriler"],
+  [/\balinmadi\b/g, "alınmadı"],
+  [/\byuklenemedi\b/g, "yüklenemedi"],
+  [/\bdegil\b/g, "değil"],
+  [/\bgorsel\b/g, "görsel"],
+  [/\bGorsel\b/g, "Görsel"],
+  [/\byuz\b/g, "yüz"],
+  [/\bYuz\b/g, "Yüz"],
+  [/\bhazir\b/g, "hazır"],
+  [/\bHazir\b/g, "Hazır"],
+  [/\blutfen\b/g, "lütfen"],
+  [/\bLutfen\b/g, "Lütfen"],
+  [/\bfotografi\b/g, "fotoğrafı"],
+  [/\bFotografi\b/g, "Fotoğrafı"],
+  [/\bcek\b/g, "çek"],
+  [/\bislenemedi\b/g, "işlenemedi"],
+  [/\bgorunen\b/g, "görünen"],
+  [/\baydinlik\b/g, "aydınlık"],
+  [/\byaklasik\b/g, "yaklaşık"],
+];
+
 function polishDisplayText(value) {
   if (typeof value !== "string" || value.length === 0) {
     return value || "";
   }
 
-  return TURKISH_DISPLAY_REPLACEMENTS.reduce(
+  const plainText = TURKISH_DISPLAY_REPLACEMENTS.reduce(
     (text, [source, replacement]) => text.replaceAll(source, replacement),
     value,
   );
+
+  return TURKISH_DISPLAY_REGEX_REPLACEMENTS.reduce(
+    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+    plainText,
+  );
+}
+
+function resolveFriendlyErrorMessage(error) {
+  const payload = error.response?.data ?? {};
+  const status = error.response?.status || 500;
+  const code = payload.code || payload.error?.code || null;
+  const rawMessage = payload.message || payload.detail || payload.error?.message || "";
+  const normalizedCode = String(code || rawMessage || "").trim();
+  const requestUrl = String(error.config?.url || "");
+  const isAnalyzeRequest = requestUrl.includes("/api/analyze") || requestUrl.includes("/validate-image");
+
+  if (
+    isAnalyzeRequest &&
+    status === 403 &&
+    (normalizedCode === "GUEST_QUOTA_EXCEEDED" || payload.guestRemainingAnalyses === 0)
+  ) {
+    return USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR.GUEST_QUOTA_EXCEEDED;
+  }
+
+  if (isAnalyzeRequest && USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR[normalizedCode]) {
+    return USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR[normalizedCode];
+  }
+
+  return polishDisplayText(rawMessage || "Bağlantı hatası. Lütfen tekrar dene.");
 }
 
 function buildAppError(error) {
   const payload = error.response?.data ?? {};
-  const appError = new Error(
-    polishDisplayText(payload.message || payload.detail || payload.error?.message || "Bağlantı hatası. Lütfen tekrar dene."),
-  );
+  const appError = new Error(resolveFriendlyErrorMessage(error));
   appError.code = payload.code || payload.error?.code || null;
   appError.status = error.response?.status || 500;
   appError.details = payload;
+  appError.retryAfterSeconds =
+    typeof payload.retryAfterSeconds === "number"
+      ? payload.retryAfterSeconds
+      : null;
   return appError;
 }
 
@@ -90,6 +176,8 @@ function normalizeAuthResponse(data) {
       email: data.email,
       role: data.role || (data.isAdmin ? "admin" : "user"),
       isAdmin: Boolean(data.isAdmin),
+      recommendationSurvey: data.recommendationSurvey || null,
+      preferredColorTheme: data.preferredColorTheme || null,
     },
     guestDataMerged: Boolean(data.guestDataMerged),
     migratedGuestAnalysesCount: data.migratedGuestAnalysesCount || 0,
@@ -171,6 +259,7 @@ function normalizeRecommendations(payload) {
 }
 
 function normalizeAnalysisResponse(data) {
+  const isPartial = data.status === "partial";
   return {
     historyId: data.historyId,
     emotion: data.emotion,
@@ -179,11 +268,16 @@ function normalizeAnalysisResponse(data) {
     needsReason: Boolean(data.needsReason),
     reasonProvided: data.reasonProvided !== false,
     followUpQuestion: polishDisplayText(data.followUpQuestion || ""),
-    warning: polishDisplayText(data.warning || ""),
+    warning: isPartial ? PARTIAL_ANALYSIS_MESSAGE_TR : polishDisplayText(data.warning || ""),
     modalityUsed: data.modalityUsed || "multimodal",
     modelUsed: data.modelUsed || "gemini-multimodal",
     responseTimeMs: data.responseTimeMs || null,
     faceDetected: Boolean(data.faceDetected),
+    contradictionDetected: Boolean(data.contradictionDetected || data.conflict_detected || data.contradiction_detected),
+    status: data.status || "complete",
+    partialError: polishDisplayText(data.partialError || data.partial_error || ""),
+    missingRecommendations: data.missingRecommendations || data.missing_recommendations || [],
+    askAvatarRefresh: Boolean(data.askAvatarRefresh || data.ask_avatar_refresh),
     guestRemainingAnalyses:
       typeof data.guestRemainingAnalyses === "number"
         ? data.guestRemainingAnalyses
@@ -246,10 +340,7 @@ export const authAPI = {
   async register(data) {
     const response = await api.post(
       "/api/auth/register",
-      {
-        ...data,
-        guestSessionId: getGuestSessionId(),
-      },
+      data,
       { skipAuthClear: true },
     );
     const normalized = normalizeAuthResponse(response.data);
@@ -260,10 +351,7 @@ export const authAPI = {
   async login(data) {
     const response = await api.post(
       "/api/auth/login",
-      {
-        ...data,
-        guestSessionId: getGuestSessionId(),
-      },
+      data,
       { skipAuthClear: true },
     );
     const normalized = normalizeAuthResponse(response.data);
@@ -301,8 +389,13 @@ export const emotionAPI = {
 };
 
 export const historyAPI = {
-  async getHistory(page = 1, limit = 10) {
-    const response = await api.get("/api/history", { params: { page, limit } });
+  async getHistory(page = 1, limit = 10, emotion = "all") {
+    const params = { page, limit };
+    if (emotion && emotion !== "all") {
+      params.emotion = emotion;
+    }
+
+    const response = await api.get("/api/history", { params });
     return {
       items: (response.data.items || []).map(normalizeHistoryItem),
       total: response.data.total || 0,
@@ -324,10 +417,35 @@ export const userAPI = {
     return response.data;
   },
 
+  async generateAvatar() {
+    const response = await api.post("/api/profile/generate-avatar", {});
+    return {
+      avatarUrl: response.data.avatar_url || response.data.avatarUrl || "",
+      cached: Boolean(response.data.cached),
+    };
+  },
+
+  async updateColorTheme(colorTheme) {
+    const response = await api.put("/api/user/theme", { colorTheme });
+    return response.data;
+  },
+
   async deleteAccount(confirmationText = "DELETE") {
     const response = await api.delete("/api/user/account", {
       data: { confirmationText },
     });
+    return response.data;
+  },
+};
+
+export const spotifyAPI = {
+  async getStatus() {
+    const response = await api.get("/api/spotify/status");
+    return response.data;
+  },
+
+  async getConnectUrl() {
+    const response = await api.get("/api/spotify/auth-url");
     return response.data;
   },
 };
@@ -406,4 +524,7 @@ export const guestSessionAPI = {
   getDefaultGuestLimit,
   resetGuestQuotaState,
   resetGuestSessionState,
+  getAnalysisCooldownRemainingSeconds,
+  setAnalysisCooldown,
+  clearAnalysisCooldown,
 };

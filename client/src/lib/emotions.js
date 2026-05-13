@@ -306,12 +306,12 @@ export function getEmotionOptions(languageOrOptions = "tr") {
     const fallback = {
       key: entry.key,
       label: getContractLabel(entry.key, language) ?? entry.key,
-      emoji: "ğŸ™‚",
+      emoji: "🙂",
       accentColor: "#6b7280",
       gradientFrom: "from-gray-50",
       gradientTo: "to-slate-50",
       borderColor: "border-gray-200",
-      message: "ArayÃ¼z yeni duygulara aÃ§Ä±k ÅŸekilde tasarlandÄ±.",
+      message: "Arayüz yeni duygulara açık şekilde tasarlandı.",
       ...DEFAULT_RESULT_META,
     };
 

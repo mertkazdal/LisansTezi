@@ -6,31 +6,27 @@ import App from "./App";
 import "./i18n.js";
 import "./styles/global.css";
 import { registerServiceWorker } from "./lib/registerServiceWorker";
-import { ThemeProvider, useTheme } from "./components/system/ThemeProvider";
+import { ColorStyleProvider } from "./components/system/ColorStyleProvider";
 
 function ThemedToaster() {
-  const { isDark } = useTheme();
-
   return (
     <Toaster
       position="bottom-right"
       toastOptions={{
         duration: 4000,
         style: {
-          background: isDark ? "rgba(8, 17, 31, 0.96)" : "rgba(255, 255, 255, 0.96)",
-          color: isDark ? "#eef6ff" : "#122033",
-          border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.1)"}`,
+          background: "var(--theme-surface-alt)",
+          color: "var(--theme-text)",
+          border: "1px solid var(--theme-border)",
           borderRadius: "16px",
-          boxShadow: isDark
-            ? "0 22px 50px rgba(2, 6, 23, 0.35)"
-            : "0 22px 50px rgba(15, 23, 42, 0.12)",
+          boxShadow: "0 22px 50px var(--theme-shadow)",
           backdropFilter: "blur(18px)",
         },
         success: {
-          iconTheme: { primary: "#0f766e", secondary: isDark ? "#eef6ff" : "#ffffff" },
+          iconTheme: { primary: "var(--theme-positive)", secondary: "var(--theme-primary-foreground)" },
         },
         error: {
-          iconTheme: { primary: "#dc2626", secondary: isDark ? "#eef6ff" : "#ffffff" },
+          iconTheme: { primary: "var(--theme-danger)", secondary: "var(--theme-primary-foreground)" },
         },
       }}
     />
@@ -39,12 +35,12 @@ function ThemedToaster() {
 
 function AppRoot() {
   return (
-    <ThemeProvider>
+    <ColorStyleProvider>
       <BrowserRouter>
         <App />
         <ThemedToaster />
       </BrowserRouter>
-    </ThemeProvider>
+    </ColorStyleProvider>
   );
 }
 

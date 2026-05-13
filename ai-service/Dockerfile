@@ -1,14 +1,18 @@
+# syntax=docker/dockerfile:1.7
 FROM python:3.11-slim
 
 WORKDIR /app/ai-service
 
-ENV LOCAL_FACE_MODEL_ID=trpakov/vit-face-expression
-ENV LOCAL_FACE_MODEL_DIR=/opt/models/trpakov-vit-face-expression
-ENV HF_HOME=/opt/huggingface
+ENV IMAGE_EMOTION_PROVIDER=gemini
+ENV PIP_DEFAULT_TIMEOUT=1000
+ENV PIP_RETRIES=10
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY ai-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='trpakov/vit-face-expression', local_dir='/opt/models/trpakov-vit-face-expression', allow_patterns=['*.json','*.onnx','*.txt'])"
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 COPY ai-service ./
 COPY shared /app/shared

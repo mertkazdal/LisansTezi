@@ -33,15 +33,15 @@ describe("ResultPage", () => {
                 historyId: "history-1",
                 emotion: "happy",
                 confidence: 0.82,
-                explanation: "Bugun pozitif bir enerji one cikiyor.",
+                explanation: "Bugün pozitif bir enerji öne çıkıyor.",
                 modalityUsed: "multimodal",
                 modelUsed: "llm-image + gemini-text",
                 faceDetected: true,
                 recommendations: {
-                  music: [{ title: "Gune Basla", artist: "Demo Artist", reason: "Enerjini korumak icin." }],
+                  music: [{ title: "Güne Başla", artist: "Demo Artist", reason: "Enerjini korumak için." }],
                   movie: [],
                   book: [],
-                  advice: [{ title: "Kisa yuruyus", description: "Ritmini korumaya yardim eder." }],
+                  advice: [{ title: "Kısa yürüyüş", description: "Ritmini korumaya yardım eder." }],
                 },
               },
             },
@@ -59,6 +59,7 @@ describe("ResultPage", () => {
     expect(screen.getAllByText(/senin için seçilen öneriler/i).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /kaydet/i }).length).toBeGreaterThan(0);
     expect(screen.getByText(/özet kartı indir/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pdf/i })).toBeInTheDocument();
   });
 
   it("shows the warning before the explanation when signals conflict", async () => {
@@ -101,5 +102,40 @@ describe("ResultPage", () => {
     expect(
       warningText.compareDocumentPosition(explanationText) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("auto-selects the first tab that actually has recommendations", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/result/history-3",
+            state: {
+              analysisResult: {
+                historyId: "history-3",
+                emotion: "calm",
+                confidence: 0.71,
+                explanation: "Sessiz ama dengeli bir ton algilandi.",
+                modalityUsed: "text",
+                modelUsed: "gemini-text",
+                faceDetected: false,
+                recommendations: {
+                  music: [],
+                  movie: [],
+                  book: [],
+                  advice: [{ title: "Nefes molasi", description: "Bir dakikalik yavas nefes akisini dene." }],
+                },
+              },
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/result/:historyId" element={<ResultPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/nefes molasi/i)).toBeInTheDocument();
   });
 });
