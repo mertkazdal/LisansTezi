@@ -69,12 +69,14 @@ public class RecommendationsController : ControllerBase
                 movies = guestRecord.Recommendations.Movies,
                 books = guestRecord.Recommendations.Books,
                 lifeAdvice = guestRecord.Recommendations.LifeAdvice,
+                activities = guestRecord.Recommendations.LifeAdvice,
                 feedback = guestRecord.Feedback
             });
         }
 
+        var authenticatedUserId = userId.Value;
         var historyQuery = _db.EmotionHistories.AsQueryable();
-        historyQuery = historyQuery.Where(h => h.Id == historyId && h.UserId == userId.Value);
+        historyQuery = historyQuery.Where(h => h.Id == historyId && h.UserId == authenticatedUserId);
 
         var history = await historyQuery.FirstOrDefaultAsync();
         if (history == null)
@@ -90,7 +92,7 @@ public class RecommendationsController : ControllerBase
             .FirstOrDefaultAsync(item => item.HistoryId == historyId);
         var currentUser = userId == null
             ? null
-            : await _db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == userId.Value);
+            : await _db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == authenticatedUserId);
 
         string? warning = null;
         if (!HasCompleteRecommendations(recs))
@@ -98,11 +100,25 @@ public class RecommendationsController : ControllerBase
             try
             {
                 var recommendationContext = RecommendationSurveyService.BuildRecommendationContext(history.UserText, currentUser);
+                var personalityProfile = await _db.UserPersonalityProfiles
+                    .AsNoTracking()
+                    .Where(profile => profile.UserId == authenticatedUserId)
+                    .Select(profile => new { profile.BigFiveJson, profile.AgeGroup })
+                    .FirstOrDefaultAsync();
+                var surveyMovieGenres = RecommendationSurveyService.ToResponse(currentUser)?.MovieGenres ?? new List<string>();
+                var excludedMovieIds = await GetRecentlyRecommendedMovieIdsAsync(authenticatedUserId);
                 var recommendations = await _aiClient.GetRecommendationsAsync(
                     history.DetectedEmotion,
                     recommendationContext,
                     GetPreferredLanguage(),
-                    true
+                    true,
+                    personalityProfile?.BigFiveJson,
+                    personalityProfile?.AgeGroup,
+                    history.Confidence,
+                    history.UserText,
+                    authenticatedUserId,
+                    surveyMovieGenres,
+                    excludedMovieIds
                 );
                 if (recommendations.TryGetProperty("coachComment", out var coachCommentProperty) &&
                     coachCommentProperty.ValueKind == JsonValueKind.String)
@@ -141,6 +157,7 @@ public class RecommendationsController : ControllerBase
             movies = GetContentForCategory(recs, "movie"),
             books = GetContentForCategory(recs, "book"),
             lifeAdvice = GetContentForCategory(recs, "advice"),
+            activities = GetContentForCategory(recs, "advice"),
             feedback = feedback == null ? null : MapFeedback(feedback)
         });
     }
@@ -217,6 +234,92 @@ public class RecommendationsController : ControllerBase
         {
             return null;
         }
+    }
+
+    private async Task<List<int>> GetRecentlyRecommendedMovieIdsAsync(Guid userId)
+    {
+        var since = DateTime.UtcNow.AddDays(-30);
+        var recommendationPayloads = await _db.AnalysisRecords
+            .AsNoTracking()
+            .Where(item => item.UserId == userId && item.CreatedAt >= since)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => item.RecommendationsJson)
+            .ToListAsync();
+
+        var ids = new HashSet<int>();
+        foreach (var payload in recommendationPayloads)
+        {
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(payload);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                CollectMovieIds(document.RootElement, "movies", ids);
+                CollectMovieIds(document.RootElement, "films", ids);
+            }
+            catch (JsonException)
+            {
+                // Ignore malformed historical recommendation payloads.
+            }
+        }
+
+        return ids.ToList();
+    }
+
+    private static void CollectMovieIds(JsonElement root, string propertyName, ISet<int> ids)
+    {
+        if (!root.TryGetProperty(propertyName, out var movies) || movies.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var movie in movies.EnumerateArray())
+        {
+            var movieId = ExtractMovieId(movie);
+            if (movieId is > 0)
+            {
+                ids.Add(movieId.Value);
+            }
+        }
+    }
+
+    private static int? ExtractMovieId(JsonElement movie)
+    {
+        if (movie.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var propertyName in new[] { "tmdb_id", "tmdbId", "id" })
+        {
+            if (movie.TryGetProperty(propertyName, out var idProperty) &&
+                idProperty.ValueKind == JsonValueKind.Number &&
+                idProperty.TryGetInt32(out var id))
+            {
+                return id;
+            }
+        }
+
+        if (movie.TryGetProperty("tmdb_url", out var urlProperty) &&
+            urlProperty.ValueKind == JsonValueKind.String)
+        {
+            var url = urlProperty.GetString() ?? string.Empty;
+            var lastSegment = url.TrimEnd('/').Split('/').LastOrDefault();
+            if (int.TryParse(lastSegment, out var parsedId))
+            {
+                return parsedId;
+            }
+        }
+
+        return null;
     }
 
     private Guid? GetUserId()

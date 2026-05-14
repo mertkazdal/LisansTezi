@@ -122,6 +122,7 @@ export default function ResultPage() {
   const resultCopy = getResultScreenCopy(i18n.language);
   const recommendations = result.recommendations || DEFAULT_RECOMMENDATIONS;
   const recommendationBundleCount = countRecommendationItems(recommendations);
+  const warningText = getAnalysisWarningText(result, i18n.language);
   const recommendationTabs = getRecommendationTabs(t);
   const activeRecommendationMeta = recommendationTabs.find((tab) => tab.key === activeTab) || recommendationTabs[0];
   const targetHistoryId = result.historyId || historyId;
@@ -194,7 +195,7 @@ export default function ResultPage() {
           result={result}
           recommendationBundleCount={recommendationBundleCount}
           t={t}
-          warningText={result.warning}
+          warningText={warningText}
         />
 
         <RecommendationExplorer
@@ -320,7 +321,11 @@ function HeroInsightCard({ label, value, accentColor }) {
 
 function WarningAlertCard({ title, hint, text }) {
   return (
-    <div className="relative overflow-hidden rounded-[2rem] border border-amber-200/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.18),rgba(15,23,42,0.92))] p-6 shadow-[0_24px_80px_rgba(245,158,11,0.14)]">
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="relative overflow-hidden rounded-[2rem] border border-amber-200/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.18),rgba(15,23,42,0.92))] p-6 shadow-[0_24px_80px_rgba(245,158,11,0.14)]"
+    >
       <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-amber-200/12 blur-3xl" />
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] border border-amber-100/35 bg-amber-200/14 text-2xl font-black text-amber-100 shadow-[0_0_28px_rgba(251,191,36,0.24)]">
@@ -1073,6 +1078,29 @@ function getResultAnalysisTypeLabel(modalityUsed, t) {
   }
 
   return t("result.textOnly");
+}
+
+function getAnalysisWarningText(result, language) {
+  if (result?.warning) {
+    return result.warning;
+  }
+
+  if (!hasResultConflictSignal(result)) {
+    return "";
+  }
+
+  return String(language || "tr").startsWith("en")
+    ? "Your selfie and text pointed to different emotions. The result was rechecked before these recommendations were prepared."
+    : "Selfie ve metin farklı duygulara işaret etti. Bu öneriler hazırlanmadan önce sonuç yeniden kontrol edildi.";
+}
+
+function hasResultConflictSignal(result) {
+  return Boolean(
+    result?.contradictionDetected ||
+      result?.conflictDetected ||
+      result?.conflict_detected ||
+      result?.contradiction_detected,
+  );
 }
 
 function getRecommendationTabs(t) {

@@ -20,6 +20,10 @@ public class UserPersonalityProfile
     [MaxLength(8)]
     public string? MbtiType { get; set; }
 
+    [Column("age_group")]
+    [MaxLength(32)]
+    public string? AgeGroup { get; set; }
+
     [Column("raw_survey_answers", TypeName = "jsonb")]
     public string RawSurveyAnswers { get; set; } = "{}";
 

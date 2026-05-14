@@ -26,6 +26,7 @@ export function ProfilePage() {
   const [spotifyStatus, setSpotifyStatus] = useState(null);
   const [spotifyError, setSpotifyError] = useState("");
   const [spotifyConnecting, setSpotifyConnecting] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -204,7 +205,7 @@ export function ProfilePage() {
       <motion.div
         initial={{ opacity: 0, y: 22 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 mx-auto max-w-7xl space-y-6"
+        className="relative z-10 mx-auto max-w-6xl space-y-4"
       >
         <ProfileHero
           displayName={displayName}
@@ -229,23 +230,22 @@ export function ProfilePage() {
               t={t}
             />
 
-            <section className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-[minmax(17rem,0.82fr)_minmax(0,1.18fr)]">
-              <LanguagePanel i18n={i18n} t={t} />
-              <ColorPalettePanel
-                activeTheme={colorTheme}
-                savingTheme={savingColorTheme}
-                themes={themes}
-                onSelect={handleColorThemeChange}
+            <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(18rem,0.78fr)_minmax(0,1.22fr)]">
+              <ProfileActionPanel
+                onOpenSettings={() => setShowSettingsModal(true)}
+                onOpenHistory={() => navigate("/history")}
+                onNewAnalysis={() => navigate("/analyze")}
+                onLogout={handleLogout}
                 t={t}
               />
-              <SessionPanel onLogout={handleLogout} t={t} />
-              <SpotifyPanel
-                status={spotifyStatus}
-                error={spotifyError}
-                connecting={spotifyConnecting}
-                onConnect={handleSpotifyConnect}
+              <ProfileStatusPanel
+                activeThemeLabel={themes.find((theme) => theme.id === colorTheme)?.label || colorTheme}
+                languageLabel={i18n.language === "en" ? t("profile.languageEnglish") : t("profile.languageTurkish")}
+                spotifyStatus={spotifyStatus}
+                spotifyError={spotifyError}
+                mostFrequentEmotion={mostFrequentEmotion}
+                onOpenSettings={() => setShowSettingsModal(true)}
                 t={t}
-                language={i18n.language}
               />
             </section>
 
@@ -275,6 +275,25 @@ export function ProfilePage() {
           </>
         )}
       </motion.div>
+
+      <AnimatePresence>
+        {showSettingsModal && (
+          <ProfileSettingsModal
+            i18n={i18n}
+            t={t}
+            activeTheme={colorTheme}
+            savingTheme={savingColorTheme}
+            themes={themes}
+            spotifyStatus={spotifyStatus}
+            spotifyError={spotifyError}
+            spotifyConnecting={spotifyConnecting}
+            onClose={() => setShowSettingsModal(false)}
+            onThemeSelect={handleColorThemeChange}
+            onSpotifyConnect={handleSpotifyConnect}
+            onLogout={handleLogout}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -288,12 +307,12 @@ function ProfileHero({ displayName, displayEmail, roleLabel, profile, mostFreque
     : "";
 
   return (
-    <section className="surface-panel-strong relative overflow-hidden p-5 sm:p-8">
-      <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl" style={{ backgroundColor: `${mostFrequentEmotion.accentColor}22` }} />
-      <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-end">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+    <section className="surface-panel-strong relative overflow-hidden p-5 sm:p-6">
+      <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full blur-3xl" style={{ backgroundColor: `${mostFrequentEmotion.accentColor}18` }} />
+      <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-end">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div
-            className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] border border-white/15 text-3xl font-black text-white shadow-2xl"
+            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 text-xl font-black text-white shadow-2xl"
             style={{ background: `linear-gradient(135deg, ${mostFrequentEmotion.accentColor}55, rgba(255,255,255,0.08))` }}
           >
             {avatarUrl ? (
@@ -304,7 +323,7 @@ function ProfileHero({ displayName, displayEmail, roleLabel, profile, mostFreque
           </div>
           <div className="min-w-0">
             <p className="section-eyebrow">{t("profile.profilePanel")}</p>
-            <h1 className="mt-4 break-words text-3xl font-black leading-tight text-white sm:text-5xl">{displayName}</h1>
+            <h1 className="mt-3 break-words text-2xl font-black leading-tight text-white sm:text-4xl">{displayName}</h1>
             <p className="mt-2 break-all text-sm text-slate-400 sm:break-normal">{displayEmail}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-bold text-cyan-100">
@@ -319,22 +338,245 @@ function ProfileHero({ displayName, displayEmail, roleLabel, profile, mostFreque
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-          <ProfileHeroMetric label={t("profile.accountRole")} value={roleLabel} />
-          <ProfileHeroMetric
-            label={t("profile.frequentEmotion")}
-            value={mostFrequentEmotion.label}
-            accentColor={mostFrequentEmotion.accentColor}
-          />
+        <div className="grid gap-2">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+            <ProfileHeroMetric label={t("profile.accountRole")} value={roleLabel} />
+            <ProfileHeroMetric
+              label={t("profile.frequentEmotion")}
+              value={mostFrequentEmotion.label}
+              accentColor={mostFrequentEmotion.accentColor}
+            />
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
+function ProfileSettingsModal({
+  i18n,
+  t,
+  activeTheme,
+  savingTheme,
+  themes,
+  spotifyStatus,
+  spotifyError,
+  spotifyConnecting,
+  onClose,
+  onThemeSelect,
+  onSpotifyConnect,
+  onLogout,
+}) {
+  const languages = [
+    { key: "tr", label: t("profile.languageTurkish") },
+    { key: "en", label: t("profile.languageEnglish") },
+  ];
+  const connected = Boolean(spotifyStatus?.connected);
+  const [activePanel, setActivePanel] = useState("account");
+  const settingsPanels = [
+    { key: "account", label: t("profile.settingsNavAccount"), marker: "1" },
+    { key: "appearance", label: t("profile.settingsNavAppearance"), marker: "2" },
+    { key: "connections", label: t("profile.settingsNavConnections"), marker: "3" },
+    { key: "session", label: t("profile.settingsNavSession"), marker: "4" },
+  ];
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-xl"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <motion.section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-settings-title"
+        className="premium-card max-h-[calc(100svh-2rem)] w-full max-w-4xl overflow-hidden p-0 shadow-2xl"
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 10, scale: 0.98 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+      >
+        <div className="border-b border-white/10 px-4 py-4 sm:px-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="section-eyebrow !px-3 !py-1.5">{t("profile.settingsEyebrow")}</p>
+              <h2 id="profile-settings-title" className="mt-3 text-2xl font-black text-white">
+                {t("profile.settingsTitle")}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                {t("profile.settingsDescription")}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="btn-secondary shrink-0 !px-3 !py-2 text-sm">
+              {t("profile.settingsClose")}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid max-h-[calc(100svh-11rem)] min-h-[28rem] overflow-hidden md:grid-cols-[14rem_minmax(0,1fr)]">
+          <aside className="border-b border-white/10 bg-white/[0.03] p-3 md:border-b-0 md:border-r">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
+              {settingsPanels.map((panel) => {
+                const active = activePanel === panel.key;
+                return (
+                  <button
+                    key={panel.key}
+                    type="button"
+                    onClick={() => setActivePanel(panel.key)}
+                    aria-pressed={active}
+                    className={`focus-ring flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-black transition ${
+                      active ? "bg-cyan-200/10 text-cyan-50" : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
+                    }`}
+                  >
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.05] text-[11px]">
+                      {panel.marker}
+                    </span>
+                    <span className="min-w-0 truncate">{panel.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <div className="overflow-y-auto p-4 sm:p-5">
+            {activePanel === "account" && (
+              <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                <h3 className="text-sm font-black text-white">{t("profile.languageTitle")}</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{t("profile.languageDescription")}</p>
+                <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/10 p-1.5">
+                  {languages.map((language) => {
+                    const active = i18n.language === language.key;
+                    return (
+                      <button
+                        key={language.key}
+                        type="button"
+                        onClick={() => {
+                          i18n.changeLanguage(language.key);
+                          localStorage.setItem("language", language.key);
+                        }}
+                        aria-pressed={active}
+                        className={`min-h-11 rounded-xl px-3 py-2 text-sm font-black transition ${
+                          active ? "bg-cyan-200/15 text-cyan-50" : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
+                        }`}
+                      >
+                        {language.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {activePanel === "appearance" && (
+              <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-black text-white">{t("profile.themeTitle")}</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{t("profile.themeDescription")}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-2.5 py-1 text-[11px] font-black text-cyan-100">
+                    {savingTheme ? t("profile.themeSaving") : t("profile.themeSynced")}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label={t("profile.themeTitle")}>
+                  {themes.map((theme) => {
+                    const active = activeTheme === theme.id;
+                    const saving = savingTheme === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => onThemeSelect(theme.id)}
+                        disabled={Boolean(savingTheme)}
+                        aria-pressed={active}
+                        className={`focus-ring flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${
+                          active
+                            ? "border-cyan-200/30 bg-cyan-200/10 text-white"
+                            : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-white/20 hover:bg-white/[0.08]"
+                        }`}
+                      >
+                        <span aria-hidden="true" className="h-7 w-7 shrink-0 rounded-full border border-white/20" style={{ background: theme.primary }} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-black">{theme.label}</span>
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            {saving ? t("profile.themeSaving") : active ? t("profile.themeSelected") : t("profile.themeApply")}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {activePanel === "connections" && (
+              <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-black text-white">{t("profile.spotifyTitle")}</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{t("profile.spotifyDescription")}</p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black ${
+                      connected
+                        ? "border-emerald-200/20 bg-emerald-200/10 text-emerald-100"
+                        : "border-white/10 bg-white/[0.05] text-slate-300"
+                    }`}
+                  >
+                    {connected ? t("profile.spotifyConnected") : t("profile.spotifyDisconnected")}
+                  </span>
+                </div>
+                {spotifyError && (
+                  <p className="mt-3 rounded-xl border border-amber-200/15 bg-amber-200/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                    {spotifyError}
+                  </p>
+                )}
+                <button type="button" onClick={onSpotifyConnect} disabled={spotifyConnecting} className="btn-primary mt-4 w-full !py-2.5 text-sm">
+                  {spotifyConnecting
+                    ? t("profile.spotifyConnecting")
+                    : connected
+                      ? t("profile.spotifyReconnect")
+                      : t("profile.spotifyConnect")}
+                </button>
+              </section>
+            )}
+
+            {activePanel === "session" && (
+              <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                <h3 className="text-sm font-black text-white">{t("profile.sessionTitle")}</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{t("profile.sessionDescription")}</p>
+                <button type="button" onClick={onLogout} className="btn-secondary mt-4 w-full !py-2.5 text-sm">
+                  {t("profile.logout")}
+                </button>
+              </section>
+            )}
+          </div>
+        </div>
+      </motion.section>
+    </motion.div>
+  );
+}
+
 function ProfileHeroMetric({ label, value, accentColor }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+    <div className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2.5">
       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <p className="mt-1 break-words text-base font-black text-white" style={{ color: accentColor }}>
         {value}
@@ -345,7 +587,7 @@ function ProfileHeroMetric({ label, value, accentColor }) {
 
 function ProfileOverviewPanel({ totalAnalyses, mostFrequentEmotion, membershipDate, t }) {
   return (
-    <section className="grid gap-4 md:grid-cols-3">
+    <section className="grid grid-cols-3 gap-2 md:gap-3">
       <ProfileFact label={t("profile.totalAnalyses")} value={formatCount(totalAnalyses)} detail={t("profile.totalAnalysesDetail")} />
       <ProfileFact
         label={t("profile.frequentEmotion")}
@@ -360,21 +602,121 @@ function ProfileOverviewPanel({ totalAnalyses, mostFrequentEmotion, membershipDa
 
 function ProfileFact({ label, value, detail, accentColor }) {
   return (
-    <div className="premium-card min-h-[8.5rem] p-5">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className="mt-2 break-words text-3xl font-black text-white" style={{ color: accentColor }}>
+    <div className="premium-card min-h-[5.4rem] p-3 md:p-4">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 md:text-xs">{label}</p>
+      <p className="mt-1.5 break-words text-xl font-black text-white md:text-2xl" style={{ color: accentColor }}>
         {value}
       </p>
-      <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
+      <p className="mt-1.5 hidden text-xs leading-5 text-slate-500 sm:block">{detail}</p>
     </div>
+  );
+}
+
+function ProfileActionPanel({ onOpenSettings, onOpenHistory, onNewAnalysis, onLogout, t }) {
+  const actions = [
+    { label: t("profile.openSettings"), detail: t("profile.openSettingsDetail"), marker: "A", onClick: onOpenSettings, primary: true },
+    { label: t("profile.openHistory"), detail: t("profile.openHistoryDetail"), marker: "G", onClick: onOpenHistory },
+    { label: t("profile.startAnalysis"), detail: t("profile.startAnalysisDetail"), marker: "Y", onClick: onNewAnalysis },
+  ];
+
+  return (
+    <section className="premium-card p-4 sm:p-5">
+      <p className="section-eyebrow !px-3 !py-1.5">{t("profile.quickActionsEyebrow")}</p>
+      <h2 className="mt-3 text-xl font-black text-white">{t("profile.quickActionsTitle")}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-400">{t("profile.quickActionsDescription")}</p>
+
+      <div className="mt-4 grid gap-2">
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={action.onClick}
+            className={`focus-ring flex min-h-[4.25rem] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+              action.primary
+                ? "border-cyan-200/25 bg-cyan-200/10 text-cyan-50 hover:bg-cyan-200/15"
+                : "border-white/10 bg-white/[0.05] text-slate-200 hover:border-white/20 hover:bg-white/[0.08]"
+            }`}
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-xs font-black">
+              {action.marker}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-black">{action.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">{action.detail}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <button type="button" onClick={onLogout} className="btn-secondary mt-4 w-full !py-2.5 text-sm">
+        {t("profile.logout")}
+      </button>
+    </section>
+  );
+}
+
+function ProfileStatusPanel({ activeThemeLabel, languageLabel, spotifyStatus, spotifyError, mostFrequentEmotion, onOpenSettings, t }) {
+  const connected = Boolean(spotifyStatus?.connected);
+  const statusRows = [
+    { label: t("profile.currentTheme"), value: activeThemeLabel },
+    { label: t("profile.currentLanguage"), value: languageLabel },
+    {
+      label: t("profile.spotifyStatusLabel"),
+      value: spotifyError
+        ? t("profile.spotifyStatusNeedsCheck")
+        : connected
+          ? t("profile.spotifyConnected")
+          : t("profile.spotifyDisconnected"),
+    },
+  ];
+
+  return (
+    <section className="premium-card p-4 sm:p-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_12rem] lg:items-start">
+        <div className="min-w-0">
+          <p className="section-eyebrow !px-3 !py-1.5">{t("profile.statusEyebrow")}</p>
+          <h2 className="mt-3 text-xl font-black text-white">{t("profile.statusTitle")}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-400">{t("profile.statusDescription")}</p>
+        </div>
+        <button type="button" onClick={onOpenSettings} className="btn-primary self-start !py-2.5 text-sm lg:justify-self-end">
+          {t("profile.settingsButton")}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {statusRows.map((row) => (
+          <div key={row.label} className="rounded-xl border border-white/10 bg-white/[0.055] p-3">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{row.label}</p>
+            <p className="mt-2 break-words text-sm font-black text-white">{row.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-base font-black"
+            style={{ backgroundColor: `${mostFrequentEmotion.accentColor}20`, color: mostFrequentEmotion.accentColor }}
+          >
+            {mostFrequentEmotion.label.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-black text-white">{t("profile.profileSignalTitle")}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-400">
+              {t("profile.profileSignalDescription", { emotion: mostFrequentEmotion.label })}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
 function ProfileStatCard({ label, value, detail, accentColor }) {
   return (
-    <div className="premium-card p-5">
+    <div className="premium-card p-4">
       <p className="text-sm font-bold text-slate-400">{label}</p>
-      <p className="mt-2 break-words text-3xl font-black text-white">{value}</p>
+      <p className="mt-1.5 break-words text-2xl font-black text-white">{value}</p>
       <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
         <span className="block h-full w-3/4 rounded-full" style={{ backgroundColor: accentColor }} />
@@ -390,8 +732,8 @@ export function LanguagePanel({ i18n, t }) {
   ];
 
   return (
-    <section className="premium-card flex h-full flex-col p-5 sm:p-6">
-      <h2 className="text-xl font-black text-white">{t("profile.languageTitle")}</h2>
+    <section className="premium-card flex h-full flex-col p-4 sm:p-5">
+      <h2 className="text-lg font-black text-white">{t("profile.languageTitle")}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-400">{t("profile.languageDescription")}</p>
       <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.05] p-1.5">
         {languages.map((language) => {
@@ -420,10 +762,10 @@ export function LanguagePanel({ i18n, t }) {
 
 function ColorPalettePanel({ activeTheme, savingTheme, themes, onSelect, t }) {
   return (
-    <section className="premium-card h-full p-5 sm:p-6">
+    <section className="premium-card h-full p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-xl font-black text-white">{t("profile.themeTitle")}</h2>
+          <h2 className="text-lg font-black text-white">{t("profile.themeTitle")}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
             {t("profile.themeDescription")}
           </p>
@@ -432,7 +774,7 @@ function ColorPalettePanel({ activeTheme, savingTheme, themes, onSelect, t }) {
           {savingTheme ? t("profile.themeSaving") : t("profile.themeSynced")}
         </span>
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="group" aria-label={t("profile.themeTitle")}>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" role="group" aria-label={t("profile.themeTitle")}>
         {themes.map((theme) => {
           const active = activeTheme === theme.id;
           const saving = savingTheme === theme.id;
@@ -443,7 +785,7 @@ function ColorPalettePanel({ activeTheme, savingTheme, themes, onSelect, t }) {
               onClick={() => onSelect(theme.id)}
               disabled={Boolean(savingTheme)}
               aria-pressed={active}
-              className={`focus-ring flex min-h-[4.5rem] items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+              className={`focus-ring flex min-h-[4rem] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                 active
                   ? "border-cyan-200/30 bg-cyan-200/10 text-white"
                   : "border-white/10 bg-white/[0.05] text-slate-300 hover:border-white/20 hover:bg-white/[0.08]"
@@ -470,12 +812,12 @@ function ColorPalettePanel({ activeTheme, savingTheme, themes, onSelect, t }) {
 
 function SessionPanel({ onLogout, t }) {
   return (
-    <section className="premium-card flex h-full flex-col justify-between p-5 sm:p-6">
+    <section className="premium-card flex h-full flex-col justify-between p-4 sm:p-5">
       <div>
-        <h2 className="text-xl font-black text-white">{t("profile.sessionTitle")}</h2>
+        <h2 className="text-lg font-black text-white">{t("profile.sessionTitle")}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-400">{t("profile.sessionDescription")}</p>
       </div>
-      <button type="button" onClick={onLogout} className="btn-secondary mt-5 w-full !py-3 text-base">
+      <button type="button" onClick={onLogout} className="btn-secondary mt-4 w-full !py-2.5 text-sm">
         {t("profile.logout")}
       </button>
     </section>
@@ -484,18 +826,18 @@ function SessionPanel({ onLogout, t }) {
 
 function SpotifyPanel({ status, error, connecting, onConnect, t, language = "tr" }) {
   const connected = Boolean(status?.connected);
-  const topTracks = Array.isArray(status?.topTracks) ? status.topTracks.slice(0, 5) : [];
+  const topTracks = Array.isArray(status?.topTracks) ? status.topTracks.slice(0, 3) : [];
   const dateLocale = String(language || "tr").startsWith("en") ? "en-US" : "tr-TR";
   const lastSyncedAt = status?.lastSyncedAt
     ? new Date(status.lastSyncedAt).toLocaleDateString(dateLocale)
     : "";
 
   return (
-    <section className="premium-card h-full p-5 sm:p-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <section className="premium-card h-full p-4 sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 max-w-3xl">
           <p className="section-eyebrow !px-3 !py-1.5">{t("profile.spotifyEyebrow")}</p>
-          <h2 className="mt-4 text-2xl font-black text-white">{t("profile.spotifyTitle")}</h2>
+          <h2 className="mt-3 text-xl font-black text-white">{t("profile.spotifyTitle")}</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
             {t("profile.spotifyDescription")}
           </p>
@@ -510,7 +852,7 @@ function SpotifyPanel({ status, error, connecting, onConnect, t, language = "tr"
           >
             {connected ? t("profile.spotifyConnected") : t("profile.spotifyDisconnected")}
           </span>
-          <button type="button" onClick={onConnect} disabled={connecting} className="btn-primary w-full whitespace-nowrap !px-5 !py-3 text-sm sm:w-auto sm:min-w-48">
+          <button type="button" onClick={onConnect} disabled={connecting} className="btn-primary w-full whitespace-nowrap !px-4 !py-2.5 text-sm sm:w-auto sm:min-w-44">
             {connecting
               ? t("profile.spotifyConnecting")
               : connected
@@ -521,12 +863,12 @@ function SpotifyPanel({ status, error, connecting, onConnect, t, language = "tr"
       </div>
 
       {error ? (
-        <div className="mt-5 rounded-2xl border border-amber-200/15 bg-amber-200/10 px-4 py-3 text-sm leading-6 text-amber-100">
+        <div className="mt-4 rounded-xl border border-amber-200/15 bg-amber-200/10 px-3 py-2.5 text-sm leading-6 text-amber-100">
           {error}
         </div>
       ) : (
-        <div className="mt-5 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="rounded-xl border border-white/10 bg-white/[0.05] p-3.5">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t("profile.spotifySignalTitle")}</p>
             <p className="mt-3 text-sm leading-6 text-slate-300">
               {connected ? t("profile.spotifySignalReady") : t("profile.spotifySignalWaiting")}
@@ -538,7 +880,7 @@ function SpotifyPanel({ status, error, connecting, onConnect, t, language = "tr"
             )}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+          <div className="rounded-xl border border-white/10 bg-white/[0.05] p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t("profile.spotifyTracksTitle")}</p>
               <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-bold text-slate-400">
@@ -546,9 +888,9 @@ function SpotifyPanel({ status, error, connecting, onConnect, t, language = "tr"
               </span>
             </div>
             {topTracks.length > 0 ? (
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2">
                 {topTracks.map((track, index) => (
-                  <div key={`${track.title || "track"}-${index}`} className="rounded-2xl border border-white/10 bg-black/10 px-3 py-3">
+                  <div key={`${track.title || "track"}-${index}`} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2.5">
                     <p className="truncate text-sm font-black text-white">{track.title || t("profile.spotifyUnknownTrack")}</p>
                     <p className="mt-1 truncate text-xs text-slate-400">
                       {Array.isArray(track.artists) && track.artists.length > 0
@@ -637,7 +979,7 @@ function DangerZone({
 
   return (
     <section className="rounded-[1.5rem] border border-red-300/20 bg-red-400/10 p-5 shadow-2xl shadow-red-950/10 sm:p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-4 lg:min-h-28 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <h2 className="text-2xl font-black text-red-50">{t("profile.deleteTitle")}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-red-100/80">
@@ -645,7 +987,7 @@ function DangerZone({
           </p>
         </div>
         {!showDeleteConfirm && (
-          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="btn-secondary self-start border-red-200/30 text-red-50 hover:bg-red-300/10">
+          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="btn-secondary self-start border-red-200/30 text-red-50 hover:bg-red-300/10 lg:self-end">
             {t("profile.deleteButton")}
           </button>
         )}

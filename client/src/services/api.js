@@ -27,9 +27,22 @@ const USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR = {
   FACE_MODEL_UNAVAILABLE: "Görsel analiz şu an kullanılamıyor. Metin ile devam edebilirsin.",
   IMAGE_UNPROCESSABLE: "Görsel işlenemedi. Metin ekleyerek analizi tamamlayabilirsin.",
   AI_INVALID_RESPONSE: "Analiz sırasında bir sorun oluştu. Lütfen tekrar dene.",
+  AI_PROVIDER_ERROR: "Analiz servisi şu an yanıt veremiyor. Lütfen biraz sonra tekrar dene.",
+  AI_SERVICE_UNAVAILABLE: "AI servisine ulaşılamıyor. Lütfen biraz sonra tekrar dene.",
+  ANALYSIS_FAILED_BEFORE_EMOTION: "Duygu sonucu üretilemeden analiz durdu. Lütfen tekrar dene.",
+  ANALYSIS_UNEXPECTED_ERROR: "Analiz sırasında beklenmeyen bir sorun oluştu. Lütfen tekrar dene.",
+  ANALYSIS_INPUT_REQUIRED: "Analize başlamak için metin, selfie ya da ikisinden birini ekle.",
+  MISSING_INPUT: "Analize başlamak için metin, selfie ya da ikisinden birini ekle.",
+  MISSING_CONSENT: "Selfie kullanmadan önce mahremiyet onayını işaretle.",
+  INVALID_TEXT_LENGTH: "Metin 10 ile 1000 karakter arasında olmalı.",
+  AGE_REQUIRED: "Analize başlamadan önce yaşını girmen gerekiyor. Önerileri yaşına uygun hazırlayacağız.",
+  INVALID_AGE: "Yaş 13 ile 120 arasında olmalı.",
   SURVEY_REQUIRED: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",
   survey_required: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",
   GUEST_QUOTA_EXCEEDED: "3 analiz hakkını kullandın. Devam etmek için ücretsiz hesap oluşturabilirsin.",
+  ANALYSIS_RETRY_COOLDOWN: "Analizin tutarsız sinyaller içeriyor. 1 dakika sonra tekrar deneyebilirsin.",
+  ANALYSIS_COOLDOWN_ACTIVE: "Analizin tutarsız sinyaller içeriyor. 1 dakika sonra tekrar deneyebilirsin.",
+  AUTHENTICATION_REQUIRED: "Oturumun sona erdi. Lütfen tekrar giriş yap.",
 };
 
 const PARTIAL_ANALYSIS_MESSAGE_TR =
@@ -138,6 +151,15 @@ function resolveFriendlyErrorMessage(error) {
   const normalizedCode = String(code || rawMessage || "").trim();
   const requestUrl = String(error.config?.url || "");
   const isAnalyzeRequest = requestUrl.includes("/api/analyze") || requestUrl.includes("/validate-image");
+  const isMetricsRequest = requestUrl.includes("/api/metrics") || requestUrl.includes("/api/admin");
+
+  if (status === 401) {
+    return "Oturumun sona erdi. Lütfen tekrar giriş yap.";
+  }
+
+  if (status === 403 && isMetricsRequest) {
+    return "Sistem analizlerini görmek için yönetici yetkisi gerekiyor.";
+  }
 
   if (
     isAnalyzeRequest &&
@@ -149,6 +171,10 @@ function resolveFriendlyErrorMessage(error) {
 
   if (isAnalyzeRequest && USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR[normalizedCode]) {
     return USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR[normalizedCode];
+  }
+
+  if (isAnalyzeRequest && status === 503) {
+    return USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR.AI_SERVICE_UNAVAILABLE;
   }
 
   return polishDisplayText(rawMessage || "Bağlantı hatası. Lütfen tekrar dene.");

@@ -18,6 +18,19 @@
     }
   },
   "questions": [
+    {
+      "id": 0,
+      "type": "age_group",
+      "text_tr": "Yaş aralığını seçer misin?",
+      "text_en": "What is your age range?",
+      "options": [
+        { "value": "teen", "label_tr": "13-17", "label_en": "13-17" },
+        { "value": "young_adult", "label_tr": "18-24", "label_en": "18-24" },
+        { "value": "adult", "label_tr": "25-39", "label_en": "25-39" },
+        { "value": "mature", "label_tr": "40+", "label_en": "40+" }
+      ],
+      "required": true
+    },
     { "id": 1, "dimension": "openness", "text_tr": "Yeni fikirleri, sanat eserlerini veya farklı kültürleri keşfetmek beni heyecanlandırır.", "text_en": "Exploring new ideas, art, or different cultures excites me.", "reverse": false },
     { "id": 2, "dimension": "openness", "text_tr": "Alışılmış yöntemler varken yeni yollar denemeyi gereksiz bulurum.", "text_en": "When familiar methods exist, I find trying new approaches unnecessary.", "reverse": true },
     { "id": 3, "dimension": "openness", "text_tr": "Duygularımı ve deneyimlerimi derinlemesine düşünmeyi severim.", "text_en": "I enjoy reflecting deeply on my feelings and experiences.", "reverse": false },

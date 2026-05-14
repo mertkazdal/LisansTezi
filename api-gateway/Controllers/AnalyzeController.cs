@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using MoodLens.ApiGateway.Data;
 using MoodLens.ApiGateway.DTOs;
 using MoodLens.ApiGateway.Models;
@@ -19,6 +20,8 @@ public class AnalyzeController : ControllerBase
     private const int DefaultAnalysisCooldownSeconds = 60;
     private const int FinalAnalysisKeyAttemptIndex = 2;
     private const string GuestSessionCookieName = "moodlens_guest_session";
+    private const int MinAnalysisAge = 13;
+    private const int MaxAnalysisAge = 120;
 
     private readonly AppDbContext _db;
     private readonly AiServiceClient _aiClient;
@@ -26,6 +29,7 @@ public class AnalyzeController : ControllerBase
     private readonly GuestAnalysisStore _guestAnalysisStore;
     private readonly GuestIdentityService _guestIdentityService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public AnalyzeController(
         AppDbContext db,
@@ -33,7 +37,8 @@ public class AnalyzeController : ControllerBase
         AnalysisCooldownService analysisCooldowns,
         GuestAnalysisStore guestAnalysisStore,
         GuestIdentityService guestIdentityService,
-        IHttpClientFactory httpClientFactory
+        IHttpClientFactory httpClientFactory,
+        IServiceScopeFactory scopeFactory
     )
     {
         _db = db;
@@ -42,6 +47,7 @@ public class AnalyzeController : ControllerBase
         _guestAnalysisStore = guestAnalysisStore;
         _guestIdentityService = guestIdentityService;
         _httpClientFactory = httpClientFactory;
+        _scopeFactory = scopeFactory;
     }
 
     [HttpPost]
@@ -60,6 +66,50 @@ public class AnalyzeController : ControllerBase
         var hasText = !string.IsNullOrWhiteSpace(request.Text);
         var normalizedText = request.Text?.Trim() ?? string.Empty;
         var normalizedMimeType = "image/jpeg";
+        User? currentUser = null;
+        NormalizedRecommendationSurvey? guestSurvey = null;
+        string? personalityJson = null;
+        string? profileAgeGroup = null;
+
+        if (userId is { } authenticatedUserId)
+        {
+            currentUser = await _db.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Id == authenticatedUserId);
+
+            if (currentUser == null)
+            {
+                return Unauthorized(new
+                {
+                    message = "Please sign in again before starting an analysis.",
+                    code = "AUTHENTICATION_REQUIRED"
+                });
+            }
+
+            if (!RecommendationSurveyService.HasCompletedSurvey(currentUser))
+            {
+                return SurveyRequired(language);
+            }
+
+            var personalityProfile = await _db.UserPersonalityProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(profile => profile.UserId == authenticatedUserId);
+
+            if (personalityProfile != null)
+            {
+                personalityJson = NormalizePersonalityJson(personalityProfile.BigFiveJson);
+                profileAgeGroup = NormalizeAgeGroupOrNull(personalityProfile.AgeGroup);
+
+                if (await ShouldTriggerPersonalityRefreshAsync(authenticatedUserId))
+                {
+                    TriggerPersonalityRefreshInBackground(authenticatedUserId, language);
+                }
+            }
+        }
+        else if (guestSession?.SurveyCompleted != true && request.RecommendationSurvey == null)
+        {
+            return SurveyRequired(language);
+        }
 
         if (userId == null)
         {
@@ -68,7 +118,7 @@ public class AnalyzeController : ControllerBase
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new
                 {
-                    message = "You have used your 3 free analyses for this browser session. Please create an account to continue.",
+                    message = BuildGuestQuotaMessage(language),
                     code = "GUEST_QUOTA_EXCEEDED",
                     guestRemainingAnalyses = 0
                 });
@@ -90,8 +140,29 @@ public class AnalyzeController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "At least one input is required. Provide a selfie, text, or both.",
+                message = BuildInputRequiredMessage(language),
                 code = "ANALYSIS_INPUT_REQUIRED"
+            });
+        }
+
+        if (!TryNormalizeAnalysisAge(request.Age, language, out var analysisAge, out var ageCode, out var ageMessage))
+        {
+            return BadRequest(new
+            {
+                message = ageMessage,
+                code = ageCode
+            });
+        }
+        var requestAgeGroup = NormalizeAgeGroupOrNull(request.AgeGroup);
+        var recommendationAgeGroup = requestAgeGroup ?? profileAgeGroup ?? AgeToGroup(analysisAge);
+
+        if (hasImage && IsUnsupportedHeicMimeType(request.MimeType))
+        {
+            return BadRequest(new
+            {
+                error = "UNSUPPORTED_IMAGE_TYPE",
+                message = BuildUnsupportedImageTypeMessage(language),
+                code = "UNSUPPORTED_IMAGE_TYPE"
             });
         }
 
@@ -99,7 +170,7 @@ public class AnalyzeController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Unsupported image format. Supported formats are JPEG, JPG, PNG, and WebP.",
+                message = BuildUnsupportedImageTypeMessage(language),
                 code = "UNSUPPORTED_IMAGE_MIME_TYPE"
             });
         }
@@ -108,7 +179,7 @@ public class AnalyzeController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Text input must be between 10 and 1000 characters.",
+                message = BuildInvalidTextLengthMessage(language),
                 code = "INVALID_TEXT_LENGTH"
             });
         }
@@ -130,39 +201,24 @@ public class AnalyzeController : ControllerBase
             }
         }
 
-        User? currentUser = null;
-        NormalizedRecommendationSurvey? guestSurvey = null;
-        if (userId is { } authenticatedUserId)
-        {
-            currentUser = await _db.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(item => item.Id == authenticatedUserId);
-
-            var hasCompletedRecommendationSurvey = RecommendationSurveyService.HasCompletedSurvey(currentUser);
-            var hasCompletedPersonalitySurvey = await _db.UserPersonalityProfiles
-                .AsNoTracking()
-                .AnyAsync(profile => profile.UserId == authenticatedUserId);
-
-            if (!hasCompletedRecommendationSurvey && !hasCompletedPersonalitySurvey)
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new
-                {
-                    message = "Please complete the recommendation survey before analysis.",
-                    code = "SURVEY_REQUIRED"
-                });
-            }
-        }
-        else if (!RecommendationSurveyService.TryNormalize(
-                     request.RecommendationSurvey,
-                     out guestSurvey,
-                     out var surveyCode,
-                     out var surveyMessage))
+        if (userId == null &&
+            request.RecommendationSurvey != null &&
+            !RecommendationSurveyService.TryNormalize(
+                request.RecommendationSurvey,
+                out guestSurvey,
+                out var surveyCode,
+                out var surveyMessage))
         {
             return BadRequest(new
             {
                 message = surveyMessage,
                 code = surveyCode
             });
+        }
+
+        if (userId == null && guestSession is not null && request.RecommendationSurvey != null)
+        {
+            guestSession = MarkGuestSurveyCompleted(guestSession);
         }
 
         try
@@ -174,7 +230,9 @@ public class AnalyzeController : ControllerBase
                 hasText ? normalizedText : null,
                 hasImage ? normalizedMimeType : null,
                 language,
-                analysisKeyEnv
+                analysisKeyEnv,
+                userId,
+                personalityJson
             );
             stopwatch.Stop();
 
@@ -228,6 +286,7 @@ public class AnalyzeController : ControllerBase
                 faceEmotion,
                 textEmotion
             );
+            var recommendationBaseContext = BuildAgeAwareRecommendationContext(analysisContext, analysisAge, language);
 
             if (userId == null)
             {
@@ -237,7 +296,7 @@ public class AnalyzeController : ControllerBase
                 var guestPipelineStatus = "complete";
                 string? guestPartialError = null;
                 var guestMissingRecommendations = new List<string>();
-                var guestRecommendationContext = RecommendationSurveyService.BuildRecommendationContext(analysisContext, guestSurvey);
+                var guestRecommendationContext = RecommendationSurveyService.BuildRecommendationContext(recommendationBaseContext, guestSurvey);
 
                 try
                 {
@@ -245,7 +304,13 @@ public class AnalyzeController : ControllerBase
                         emotion,
                         guestRecommendationContext,
                         language,
-                        true
+                        true,
+                        null,
+                        recommendationAgeGroup,
+                        confidence,
+                        normalizedText,
+                        null,
+                        guestSurvey?.MovieGenres
                     );
                     if (guestRecommendations.Value.TryGetProperty("coachComment", out var coachCommentProperty) &&
                         coachCommentProperty.ValueKind == JsonValueKind.String)
@@ -327,7 +392,8 @@ public class AnalyzeController : ControllerBase
                         music = guestRecommendationBundle.Music,
                         movies = guestRecommendationBundle.Movies,
                         books = guestRecommendationBundle.Books,
-                        lifeAdvice = guestRecommendationBundle.LifeAdvice
+                        lifeAdvice = guestRecommendationBundle.LifeAdvice,
+                        activities = guestRecommendationBundle.LifeAdvice
                     }
                 });
             }
@@ -355,12 +421,9 @@ public class AnalyzeController : ControllerBase
             var pipelineStatus = "complete";
             string? partialError = null;
             var missingRecommendations = new List<string>();
-            await MaybeLogPersonalityRefreshAsync(resolvedUserId, language);
-            var personalityContext = await BuildPersonalitySnapshotAsync(resolvedUserId);
-            var recommendationContext = AppendPersonalityContext(
-                RecommendationSurveyService.BuildRecommendationContext(history.UserText, currentUser),
-                personalityContext
-            );
+            var recommendationContext = RecommendationSurveyService.BuildRecommendationContext(recommendationBaseContext, currentUser);
+            var excludedMovieIds = await GetRecentlyRecommendedMovieIdsAsync(resolvedUserId);
+            var surveyMovieGenres = RecommendationSurveyService.ToResponse(currentUser)?.MovieGenres ?? new List<string>();
 
             try
             {
@@ -368,7 +431,14 @@ public class AnalyzeController : ControllerBase
                     emotion,
                     recommendationContext,
                     language,
-                    true
+                    true,
+                    personalityJson,
+                    recommendationAgeGroup,
+                    confidence,
+                    normalizedText,
+                    resolvedUserId,
+                    surveyMovieGenres,
+                    excludedMovieIds
                 );
                 if (recommendations.Value.TryGetProperty("coachComment", out var coachCommentProperty) &&
                     coachCommentProperty.ValueKind == JsonValueKind.String)
@@ -462,7 +532,8 @@ public class AnalyzeController : ControllerBase
                     music = GetRecommendationCategory(recommendations, "music"),
                     movies = GetRecommendationCategory(recommendations, "movies"),
                     books = GetRecommendationCategory(recommendations, "books"),
-                    lifeAdvice = GetRecommendationCategory(recommendations, "lifeAdvice")
+                    lifeAdvice = GetRecommendationCategory(recommendations, "lifeAdvice"),
+                    activities = GetRecommendationCategory(recommendations, "activities")
                 }
             });
         }
@@ -506,16 +577,18 @@ public class AnalyzeController : ControllerBase
         {
             return StatusCode(503, new
             {
-                message = "AI service is unavailable. Please try again later.",
-                detail = ex.Message
+                message = BuildAiUnavailableMessage(language),
+                detail = ex.Message,
+                code = "AI_SERVICE_UNAVAILABLE"
             });
         }
         catch (Exception ex)
         {
             return StatusCode(500, new
             {
-                message = "An error occurred during analysis.",
-                detail = ex.Message
+                message = BuildUnexpectedAnalysisErrorMessage(language),
+                detail = ex.Message,
+                code = "ANALYSIS_UNEXPECTED_ERROR"
             });
         }
     }
@@ -545,6 +618,118 @@ public class AnalyzeController : ControllerBase
                 Content = categoryData.GetRawText()
             });
         }
+    }
+
+    private IActionResult SurveyRequired(string language)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            error = "survey_required",
+            message = language == "tr"
+                ? "Analize başlamadan önce kısa bir anket doldurman gerekiyor."
+                : "Please complete the short survey before starting the analysis.",
+            code = "survey_required"
+        });
+    }
+
+    private static bool TryNormalizeAnalysisAge(
+        int? age,
+        string language,
+        out int normalizedAge,
+        out string code,
+        out string message
+    )
+    {
+        normalizedAge = 0;
+        code = "AGE_REQUIRED";
+        message = language == "tr"
+            ? "Analize başlamadan önce yaş aralığını seçmen gerekiyor."
+            : "Please select your age range before starting the analysis.";
+
+        if (age == null)
+        {
+            return false;
+        }
+
+        if (age is < MinAnalysisAge or > MaxAnalysisAge)
+        {
+            code = "INVALID_AGE";
+            message = language == "tr"
+                ? $"Yaş {MinAnalysisAge} ile {MaxAnalysisAge} arasında olmalı."
+                : $"Age must be between {MinAnalysisAge} and {MaxAnalysisAge}.";
+            return false;
+        }
+
+        normalizedAge = age.Value;
+        return true;
+    }
+
+    private static string AgeToGroup(int age)
+    {
+        return age switch
+        {
+            < 18 => "teen",
+            < 25 => "young_adult",
+            < 40 => "adult",
+            _ => "mature"
+        };
+    }
+
+    private static string? NormalizeAgeGroupOrNull(string? ageGroup)
+    {
+        var normalized = (ageGroup ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized is "teen" or "young_adult" or "adult" or "mature" ? normalized : null;
+    }
+
+    private static string BuildAgeAwareRecommendationContext(string analysisContext, int age, string language)
+    {
+        var ageGroup = age switch
+        {
+            < 18 => "minor / teen",
+            < 25 => "young adult",
+            < 40 => "adult",
+            < 60 => "middle adult",
+            _ => "older adult"
+        };
+        var ageContext = $"Age-aware recommendation criterion: user is {age} years old ({ageGroup}). Use age as a recommendation criterion for music, film, book, and life advice; keep all suggestions age-appropriate and life-stage suitable.";
+
+        if (string.IsNullOrWhiteSpace(analysisContext))
+        {
+            return ageContext;
+        }
+
+        return $"{analysisContext}\n{ageContext}";
+    }
+
+    private async Task<bool> ShouldTriggerPersonalityRefreshAsync(Guid userId)
+    {
+        var lastUpdate = await _db.PersonalityUpdateLogs
+            .AsNoTracking()
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.UpdatedAt)
+            .Select(item => (DateTime?)item.UpdatedAt)
+            .FirstOrDefaultAsync();
+
+        return lastUpdate == null || DateTime.UtcNow - lastUpdate.Value > TimeSpan.FromDays(3);
+    }
+
+    private void TriggerPersonalityRefreshInBackground(Guid userId, string language)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var worker = ActivatorUtilities.CreateInstance<AnalyzeController>(scope.ServiceProvider);
+                await worker.MaybeLogPersonalityRefreshAsync(userId, language);
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await db.SaveChangesAsync();
+            }
+            catch
+            {
+                // Background profile refresh must never block or fail analysis.
+            }
+        });
     }
 
     private async Task SaveAnalysisRecordAsync(
@@ -582,6 +767,92 @@ public class AnalyzeController : ControllerBase
             Status = status is "partial" or "failed" ? status : "complete"
         });
 
+    }
+
+    private async Task<List<int>> GetRecentlyRecommendedMovieIdsAsync(Guid userId)
+    {
+        var since = DateTime.UtcNow.AddDays(-30);
+        var recommendationPayloads = await _db.AnalysisRecords
+            .AsNoTracking()
+            .Where(item => item.UserId == userId && item.CreatedAt >= since)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => item.RecommendationsJson)
+            .ToListAsync();
+
+        var ids = new HashSet<int>();
+        foreach (var payload in recommendationPayloads)
+        {
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(payload);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                CollectMovieIds(document.RootElement, "movies", ids);
+                CollectMovieIds(document.RootElement, "films", ids);
+            }
+            catch (JsonException)
+            {
+                // Ignore malformed historical recommendation payloads.
+            }
+        }
+
+        return ids.ToList();
+    }
+
+    private static void CollectMovieIds(JsonElement root, string propertyName, ISet<int> ids)
+    {
+        if (!root.TryGetProperty(propertyName, out var movies) || movies.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var movie in movies.EnumerateArray())
+        {
+            var movieId = ExtractMovieId(movie);
+            if (movieId is > 0)
+            {
+                ids.Add(movieId.Value);
+            }
+        }
+    }
+
+    private static int? ExtractMovieId(JsonElement movie)
+    {
+        if (movie.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var propertyName in new[] { "tmdb_id", "tmdbId", "id" })
+        {
+            if (movie.TryGetProperty(propertyName, out var idProperty) &&
+                idProperty.ValueKind == JsonValueKind.Number &&
+                idProperty.TryGetInt32(out var id))
+            {
+                return id;
+            }
+        }
+
+        if (movie.TryGetProperty("tmdb_url", out var urlProperty) &&
+            urlProperty.ValueKind == JsonValueKind.String)
+        {
+            var url = urlProperty.GetString() ?? string.Empty;
+            var lastSegment = url.TrimEnd('/').Split('/').LastOrDefault();
+            if (int.TryParse(lastSegment, out var parsedId))
+            {
+                return parsedId;
+            }
+        }
+
+        return null;
     }
 
     private static (string Status, string? PartialError, List<string> MissingRecommendations) ReadRecommendationStatus(
@@ -636,6 +907,10 @@ public class AnalyzeController : ControllerBase
                 new { title = "A short reflective read", authors = new[] { "MoodLens" }, description = "Fallback book suggestion while Google Books is unavailable." }
             },
             lifeAdvice = new[]
+            {
+                new { title = "Take one small step", description = "Choose one realistic action that supports your current pace.", icon = "AI" }
+            },
+            activities = new[]
             {
                 new { title = "Take one small step", description = "Choose one realistic action that supports your current pace.", icon = "AI" }
             },
@@ -999,6 +1274,31 @@ public class AnalyzeController : ControllerBase
         return JsonSerializer.Deserialize<object>(categoryData.GetRawText()) ?? Array.Empty<object>();
     }
 
+    private static string? NormalizePersonalityJson(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return null;
+        }
+
+        var trimmed = rawJson.Trim();
+        try
+        {
+            using var document = JsonDocument.Parse(trimmed);
+            return document.RootElement.GetRawText();
+        }
+        catch (JsonException)
+        {
+            return trimmed;
+        }
+    }
+
+    private static bool IsUnsupportedHeicMimeType(string? mimeType)
+    {
+        var normalized = mimeType?.Trim().ToLowerInvariant();
+        return normalized is "image/heic" or "image/heif";
+    }
+
     private static bool TryNormalizeMimeType(string? mimeType, out string normalizedMimeType)
     {
         normalizedMimeType = "image/jpeg";
@@ -1184,16 +1484,6 @@ public class AnalyzeController : ControllerBase
         return $"{currentWarning} {nextWarning}";
     }
 
-    private static string AppendPersonalityContext(string? currentContext, string? personalitySnapshot)
-    {
-        if (string.IsNullOrWhiteSpace(personalitySnapshot))
-        {
-            return currentContext ?? string.Empty;
-        }
-
-        var normalizedContext = currentContext ?? string.Empty;
-        return $"{normalizedContext}\nPersonality profile JSON: {personalitySnapshot}".Trim();
-    }
 
     private static string? ResolveActorKey(Guid? userId, string? guestSessionId)
     {
@@ -1219,6 +1509,66 @@ public class AnalyzeController : ControllerBase
         }
 
         return $"Analysis is temporarily locked because the selfie and text stayed contradictory. Please try again in {normalizedSeconds} seconds.";
+    }
+
+    private static string BuildGuestQuotaMessage(string language)
+    {
+        if (language == "tr")
+        {
+            return "Bu tarayıcı oturumunda 3 ücretsiz analiz hakkını kullandın. Devam etmek için hesap oluşturabilirsin.";
+        }
+
+        return "You have used your 3 free analyses for this browser session. Please create an account to continue.";
+    }
+
+    private static string BuildInputRequiredMessage(string language)
+    {
+        if (language == "tr")
+        {
+            return "Analize başlamak için metin, selfie ya da ikisinden birini ekle.";
+        }
+
+        return "At least one input is required. Provide a selfie, text, or both.";
+    }
+
+    private static string BuildUnsupportedImageTypeMessage(string language)
+    {
+        if (language == "tr")
+        {
+            return "Bu dosya formatı desteklenmiyor. Lütfen JPG, PNG veya WebP formatında bir fotoğraf yükle.";
+        }
+
+        return "Unsupported image format. Supported formats are JPEG, JPG, PNG, and WebP.";
+    }
+
+    private static string BuildInvalidTextLengthMessage(string language)
+    {
+        if (language == "tr")
+        {
+            return "Metin 10 ile 1000 karakter arasında olmalı.";
+        }
+
+        return "Text input must be between 10 and 1000 characters.";
+    }
+
+    private static string BuildAiUnavailableMessage(string language)
+    {
+        if (language == "tr")
+        {
+            return "AI servisine şu an ulaşılamıyor. Lütfen biraz sonra tekrar dene.";
+        }
+
+        return "AI service is unavailable. Please try again later.";
+    }
+
+    private static string BuildUnexpectedAnalysisErrorMessage(string language)
+    {
+        if (language == "tr")
+        {
+            return "Analiz sırasında beklenmeyen bir sorun oluştu. Lütfen tekrar dene.";
+        }
+
+        return "An error occurred during analysis.";
     }
 
     private static string ResolveAnalysisKeyEnv(bool hasImage, bool hasText, int attemptIndex)
@@ -1306,9 +1656,24 @@ public class AnalyzeController : ControllerBase
         var count = cookieState != null && string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal)
             ? Math.Clamp(cookieState.CompletedAnalyses, 0, GuestAnalysisLimit)
             : 0;
-        var state = new GuestSessionState(sessionId, count);
+        var surveyCompleted = cookieState != null &&
+            string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal) &&
+            cookieState.SurveyCompleted;
+        var state = new GuestSessionState(sessionId, count, surveyCompleted);
         WriteGuestSessionStateCookie(state);
         return state;
+    }
+
+    private GuestSessionState MarkGuestSurveyCompleted(GuestSessionState state)
+    {
+        if (state.SurveyCompleted)
+        {
+            return state;
+        }
+
+        var updated = state with { SurveyCompleted = true };
+        WriteGuestSessionStateCookie(updated);
+        return updated;
     }
 
     private int RegisterGuestCompletedAnalysis(GuestSessionState? state)
@@ -1361,5 +1726,5 @@ public class AnalyzeController : ControllerBase
         return Guid.TryParse(claim, out var id) ? id : null;
     }
 
-    private sealed record GuestSessionState(string SessionId, int CompletedAnalyses);
+    private sealed record GuestSessionState(string SessionId, int CompletedAnalyses, bool SurveyCompleted = false);
 }

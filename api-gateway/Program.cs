@@ -228,7 +228,8 @@ static async Task EnsureRuntimeSchemaAsync(AppDbContext dbContext)
             IF to_regclass('user_personality_profiles') IS NOT NULL THEN
                 ALTER TABLE user_personality_profiles
                     ADD COLUMN IF NOT EXISTS avatar_url text,
-                    ADD COLUMN IF NOT EXISTS avatar_generated_at timestamp with time zone;
+                    ADD COLUMN IF NOT EXISTS avatar_generated_at timestamp with time zone,
+                    ADD COLUMN IF NOT EXISTS age_group character varying(32);
             END IF;
         END $$;
 

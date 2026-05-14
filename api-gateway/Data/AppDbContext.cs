@@ -116,6 +116,7 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.UserId).IsUnique();
             entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(e => e.BigFiveJson).HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.AgeGroup).HasMaxLength(32);
             entity.Property(e => e.RawSurveyAnswers).HasDefaultValueSql("'{}'::jsonb");
             entity.Property(e => e.LastUpdated).HasDefaultValueSql("NOW()");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");

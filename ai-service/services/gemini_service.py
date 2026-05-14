@@ -17,11 +17,12 @@ from services.emotion_catalog import (
     VALID_EMOTIONS,
     normalize_emotion_key,
 )
+from services.gemini_key_manager import GeminiKeyError, gemini_key_manager
 from services.recommendation_runtime import AsyncTTLCache, build_cache_key, compact_context
 
 load_dotenv()
 
-MIN_SIGNAL_CONFIDENCE = 0.55
+MIN_SIGNAL_CONFIDENCE = 0.70
 MODEL_ALIASES = {
     "gemini-3.0-flash-preview": "gemini-3-flash-preview",
     "models/gemini-3-flash-preview": "gemini-3-flash-preview",
@@ -64,7 +65,7 @@ DEFAULT_LIFE_ADVICE = {
 }
 DEFAULT_CLARIFICATION_MESSAGES = {
     "en": "Your selfie and text point to different emotions. Please retake the photo or rewrite your text and try again.",
-    "tr": "Selfie ve yazdigin metin farkli duygular gosteriyor. Lutfen fotografi tekrar cek ya da metni yeniden yazip tekrar dene.",
+    "tr": "Selfie ve yazdığın metin farklı duygular gösteriyor. Lütfen fotoğrafı tekrar çek ya da metni yeniden yazıp tekrar dene.",
 }
 DEFAULT_REASON_PROMPTS = {
     "en": "You seem to be going through something difficult. Can you tell me what is causing this feeling?",
@@ -145,19 +146,33 @@ def _resolve_env_value(primary_name: str, fallback_name: str | None = None) -> s
     return ""
 
 
+def _personality_prompt_context(personality_json: str | None) -> str:
+    cleaned = str(personality_json or "").strip()
+    if not cleaned or cleaned.lower() in {"null", "none"}:
+        return ""
+
+    return (
+        f"User personality profile (Big Five): {cleaned}. "
+        "Use this to better interpret emotional signals."
+    )
+
+
 def _get_model(
-    api_key_env: str = "GEMINI_API_KEY",
+    api_key_role: str = "text_emotion",
     model_env: str = "GEMINI_MODEL_NAME",
-    fallback_api_key_env: str | None = None,
     fallback_model_env: str | None = None,
+    operation: str = "gemini",
 ) -> genai.GenerativeModel:
-    api_key = _resolve_env_value(api_key_env, fallback_api_key_env)
-    if not api_key:
+    try:
+        api_key, key_env = gemini_key_manager.get_key(api_key_role)
+    except GeminiKeyError as exc:
         raise GeminiServiceError(
             "Gemini API key is not configured.",
             500,
             "AI_CONFIG_ERROR",
-        )
+        ) from exc
+
+    print(f"Gemini operation '{operation}' using key role '{api_key_role}' from env '{key_env}'.")
 
     model_name = _normalize_model_name(
         _resolve_env_value(model_env, fallback_model_env) or "gemini-3-flash-preview"
@@ -309,10 +324,10 @@ def _normalize_analysis_result(result: dict, reason_text: str | None, language: 
 def _default_analysis_explanation(language: str, mode: str) -> str:
     if language == "tr":
         if mode == "image":
-            return "Selfie sinyali uzerinden duygu analizi tamamlandi."
+            return "Selfie sinyali üzerinden duygu analizi tamamlandı."
         if mode == "text":
-            return "Metin uzerinden duygu analizi tamamlandi."
-        return "Metin ve selfie birlikte degerlendirilerek duygu analizi tamamlandi."
+            return "Metin üzerinden duygu analizi tamamlandı."
+        return "Metin ve selfie birlikte değerlendirilerek duygu analizi tamamlandı."
 
     if mode == "image":
         return "Emotion analysis from the selfie signal has been completed."
@@ -402,10 +417,10 @@ def _quota_message(language: str, retry_after_seconds: int | None) -> str:
     if language == "tr":
         if retry_after_seconds:
             return (
-                "Gemini kullanim kotasi doldu. "
-                f"Lutfen yaklasik {retry_after_seconds} saniye sonra tekrar dene."
+                "Gemini kullanım kotası doldu. "
+                f"Lütfen yaklaşık {retry_after_seconds} saniye sonra tekrar dene."
             )
-        return "Gemini kullanim kotasi doldu. Lutfen biraz sonra tekrar dene."
+        return "Gemini kullanım kotası doldu. Lütfen biraz sonra tekrar dene."
 
     if retry_after_seconds:
         return (
@@ -418,7 +433,7 @@ def _quota_message(language: str, retry_after_seconds: int | None) -> str:
 
 def _provider_error_message(language: str, operation: str) -> str:
     if language == "tr":
-        return f"Gemini su anda {operation} istegini isleyemiyor. Lutfen biraz sonra tekrar dene."
+        return f"Gemini şu anda {operation} isteğini işleyemiyor. Lütfen biraz sonra tekrar dene."
 
     return f"Gemini could not complete the {operation} request right now. Please try again shortly."
 
@@ -426,8 +441,8 @@ def _provider_error_message(language: str, operation: str) -> str:
 def _image_processing_error_message(language: str) -> str:
     if language == "tr":
         return (
-            "Selfie islenemedi. Lutfen yuzu net gorunen, daha aydinlik bir fotografla tekrar dene "
-            "veya yalnizca metinle devam et."
+            "Selfie işlenemedi. Lütfen yüzü net görünen, daha aydınlık bir fotoğrafla tekrar dene "
+            "veya yalnızca metinle devam et."
         )
 
     return (
@@ -439,8 +454,8 @@ def _image_processing_error_message(language: str) -> str:
 def _image_fallback_warning(language: str) -> str:
     if language == "tr":
         return (
-            "Selfie okunamadi; analiz metin uzerinden tamamlandi. Daha net bir selfie ile tekrar denersen "
-            "gorsel sinyal de sonuca dahil edilir."
+            "Selfie okunamadı; analiz metin üzerinden tamamlandı. Daha net bir selfie ile tekrar denersen "
+            "görsel sinyal de sonuca dahil edilir."
         )
 
     return (
@@ -492,18 +507,17 @@ async def _generate_content(
     prompt_payload: Any,
     language: str,
     operation: str,
-    api_key_env: str = "GEMINI_API_KEY",
+    api_key_role: str = "text_emotion",
     model_env: str = "GEMINI_MODEL_NAME",
-    fallback_api_key_env: str | None = None,
     fallback_model_env: str | None = None,
 ):
     async with GEMINI_LOCK:
         try:
             model = _get_model(
-                api_key_env=api_key_env,
+                api_key_role=api_key_role,
                 model_env=model_env,
-                fallback_api_key_env=fallback_api_key_env,
                 fallback_model_env=fallback_model_env,
+                operation=operation,
             )
             return await asyncio.to_thread(model.generate_content, prompt_payload)
         except GeminiServiceError:
@@ -536,10 +550,10 @@ def _read_response_text(response: Any, language: str) -> str:
 def _analysis_explanation(language: str, mode: str, emotion: str) -> str:
     if language == "tr":
         if mode == "image":
-            return f"Gorsel sinyal analiz edildi ve baskin duygu {emotion} olarak siniflandirildi."
+            return f"Görsel sinyal analiz edildi ve baskın duygu {emotion} olarak sınıflandırıldı."
         if mode == "text":
-            return f"Metin analiz edildi ve baskin duygu {emotion} olarak siniflandirildi."
-        return f"Metin ve gorsel sinyal birlikte degerlendirildi; baskin duygu {emotion}."
+            return f"Metin analiz edildi ve baskın duygu {emotion} olarak sınıflandırıldı."
+        return f"Metin ve görsel sinyal birlikte değerlendirildi; baskın duygu {emotion}."
 
     if mode == "image":
         return f"The visual signal was analyzed and classified as {emotion}."
@@ -574,6 +588,7 @@ async def _analyze_image_signal(
     image_base64: str,
     mime_type: str | None,
     language: str,
+    personality_json: str | None = None,
 ) -> dict:
     local_result = await _try_local_face_emotion(image_base64, mime_type, language)
     if local_result:
@@ -583,8 +598,10 @@ async def _analyze_image_signal(
     image_bytes = base64.b64decode(image_base64, validate=True)
     normalized_mime = mime_type or "image/jpeg"
     language_name = _response_language_name(normalized_language)
+    personality_context = _personality_prompt_context(personality_json)
     prompt = f"""
 Analyze the user's facial emotion from this validated single-face image.
+{personality_context}
 Classify into exactly one of these emotions:
 {VALID_EMOTION_PROMPT}
 
@@ -598,8 +615,7 @@ Respond in {language_name}.
         [prompt, {"mime_type": normalized_mime, "data": image_bytes}],
         normalized_language,
         "image-analysis",
-        api_key_env="GEMINI_API_KEY",
-        fallback_api_key_env="GEMINI_KEY_TEXT_EMOTION",
+        api_key_role="text_emotion",
     )
     response_text = _read_response_text(response, normalized_language)
 
@@ -629,18 +645,20 @@ async def _resolve_conflict_signal(
     text_confidence: float,
     personality_json: str | None,
     language: str,
-    api_key_env: str,
+    api_key_role: str,
 ) -> dict:
+    personality_context = _personality_prompt_context(personality_json)
     prompt = f"""
-Two emotion signals conflict. Image analysis shows {image_emotion} ({image_confidence}). Text analysis shows {text_emotion} ({text_confidence}). User personality: {personality_json or "{}"}. Determine which signal is more authentic and why. Return ONLY JSON: {{"resolved_emotion": "...", "resolved_confidence": 0.0-1.0, "conflict_note": "...", "is_true_conflict": bool}}
+Two emotion signals conflict. Image analysis shows {image_emotion} ({image_confidence}). Text analysis shows {text_emotion} ({text_confidence}).
+{personality_context}
+Determine which signal is more authentic and why. Return ONLY JSON: {{"resolved_emotion": "...", "resolved_confidence": 0.0-1.0, "conflict_note": "...", "is_true_conflict": bool}}
 """.strip()
 
     response = await _generate_content(
         prompt,
         language,
         "conflict-resolution",
-        api_key_env=api_key_env,
-        fallback_api_key_env="GEMINI_API_KEY",
+        api_key_role=api_key_role,
     )
     response_text = _read_response_text(response, language)
 
@@ -666,11 +684,13 @@ Two emotion signals conflict. Image analysis shows {image_emotion} ({image_confi
     }
 
 
-def _resolve_conflict_key_env(analysis_key_env: str | None) -> str:
+def _resolve_conflict_key_role(analysis_key_env: str | None) -> str:
     candidate = (analysis_key_env or "").strip()
-    if candidate in {"GEMINI_KEY_CONFLICT_1", "GEMINI_KEY_CONFLICT_2", "GEMINI_KEY_CONFLICT_3"}:
-        return candidate
-    return "GEMINI_KEY_CONFLICT_1"
+    if candidate == "GEMINI_KEY_CONFLICT_2":
+        return "conflict_2"
+    if candidate == "GEMINI_KEY_CONFLICT_3":
+        return "conflict_3"
+    return "conflict_1"
 
 
 async def analyze_emotion(
@@ -679,7 +699,10 @@ async def analyze_emotion(
     mime_type: str | None = "image/jpeg",
     language: str = "en",
     analysis_key_env: str | None = None,
+    personality_json: str | None = None,
+    user_id: str | None = None,
 ) -> dict:
+    del user_id
     normalized_language = _normalize_language(language)
     cleaned_text = (user_text or "").strip()
     cleaned_image = (image_base64 or "").strip()
@@ -702,6 +725,7 @@ async def analyze_emotion(
                 cleaned_image,
                 mime_type,
                 normalized_language,
+                personality_json,
             )
         except GeminiServiceError:
             raise
@@ -715,7 +739,7 @@ async def analyze_emotion(
             warning = _image_fallback_warning(normalized_language)
             image_fallback_used = True
 
-    text_result = await _analyze_text_signal(cleaned_text, normalized_language) if has_text else None
+    text_result = await _analyze_text_signal(cleaned_text, normalized_language, personality_json=personality_json) if has_text else None
 
     if has_image and has_text:
         face_emotion = face_result["emotion"] if face_result else None
@@ -739,9 +763,9 @@ async def analyze_emotion(
                 float(face_confidence or 0.0),
                 text_emotion,
                 float(text_confidence or 0.0),
-                None,
+                personality_json,
                 normalized_language,
-                _resolve_conflict_key_env(analysis_key_env),
+                _resolve_conflict_key_role(analysis_key_env),
             )
             final_emotion = resolution["resolved_emotion"]
             final_confidence = resolution["resolved_confidence"]
@@ -826,13 +850,16 @@ async def _analyze_text_signal(
     user_text: str,
     language: str,
     face_context: dict | None = None,
+    personality_json: str | None = None,
 ) -> dict:
     language_name = _response_language_name(language)
     del face_context
+    personality_context = _personality_prompt_context(personality_json)
 
     prompt = f"""
 Analyze the emotional state of this text. Classify into exactly one of these emotions:
 {VALID_EMOTION_PROMPT}
+{personality_context}
 Return ONLY valid JSON: {{"emotion": "...", "confidence": 0.0-1.0, "reasoning": "..."}}
 Text: {user_text}
 Respond in {language_name}.
@@ -842,8 +869,7 @@ Respond in {language_name}.
         prompt,
         language,
         "text-analysis",
-        api_key_env="GEMINI_KEY_TEXT_EMOTION",
-        fallback_api_key_env="GEMINI_API_KEY",
+        api_key_role="text_emotion",
     )
     response_text = getattr(response, "text", "").strip()
     if not response_text:
@@ -938,7 +964,7 @@ Respond ONLY in this JSON format:
 For "icon", use one of these emoji: ğŸŒŸ, ğŸ’ª, ğŸ§˜, ğŸŒˆ, ğŸ’¡, ğŸ¯, â¤ï¸, ğŸŒ±, ğŸ”¥, ğŸ«¶
 """
 
-    api_key_env = "GEMINI_FOLLOWUP_API_KEY" if prefer_followup_key else "GEMINI_API_KEY"
+    api_key_role = "recommendations" if prefer_followup_key else "coach"
     model_env = "GEMINI_FOLLOWUP_MODEL_NAME" if prefer_followup_key else "GEMINI_MODEL_NAME"
 
     try:
@@ -946,9 +972,8 @@ For "icon", use one of these emoji: ğŸŒŸ, ğŸ’ª, ğŸ§˜, ğŸŒˆ, ğ�
             prompt,
             normalized_language,
             "life-advice",
-            api_key_env=api_key_env,
+            api_key_role=api_key_role,
             model_env=model_env,
-            fallback_api_key_env="GEMINI_API_KEY",
             fallback_model_env="GEMINI_MODEL_NAME",
         )
         response_text = getattr(response, "text", "").strip()
@@ -1015,15 +1040,18 @@ async def generate_recommendation_queries(
     context: str | None = None,
     language: str = "en",
     prefer_followup_key: bool = False,
+    personality_json: str | None = None,
 ) -> dict:
     normalized_language = _normalize_language(language)
     normalized_emotion = normalize_emotion_key(emotion, "calm")
     compacted_context = compact_context(context, max_chars=600)
+    compacted_personality = compact_context(personality_json, max_chars=1200)
     cache_key = build_cache_key(
         "recommendation-queries",
         {
             "emotion": normalized_emotion,
             "context": compacted_context,
+            "personality": compacted_personality,
             "language": normalized_language,
             "prefer_followup_key": bool(prefer_followup_key),
         },
@@ -1033,9 +1061,17 @@ async def generate_recommendation_queries(
         return cached
 
     language_name = _response_language_name(normalized_language)
+    personality_block = (
+        f"User personality profile (Big Five): {compacted_personality}. "
+        "Use this with 30% weight when recommending content."
+        if compacted_personality
+        else "No Big Five personality profile is available; rely on emotion and context only."
+    )
     prompt = f"""
-You are a personalized wellbeing coach. User's current emotional state: {normalized_emotion}. User personality profile and context: {compacted_context or "{}"}.
-Recommend content that is 70% driven by emotion and 30% by personality.
+You are a personalized wellbeing coach. User's current emotional state: {normalized_emotion}.
+{personality_block}
+Additional user context: {compacted_context or "{}"}.
+Recommend content that is 70% driven by emotion and 30% by personality when personality is available.
 Return ONLY valid JSON in {language_name}:
 {{
 "music_queries": ["search query 1", "search query 2", "search query 3"],
@@ -1060,14 +1096,13 @@ Return ONLY valid JSON in {language_name}:
         "coach_advice": _default_coach_comment(normalized_emotion, normalized_language, compacted_context),
     }
 
-    api_key_env = "GEMINI_KEY_RECOMMENDATIONS" if prefer_followup_key else "GEMINI_KEY_COACH"
+    api_key_role = "recommendations" if prefer_followup_key else "coach"
     try:
         response = await _generate_content(
             prompt,
             normalized_language,
             "recommendation-queries",
-            api_key_env=api_key_env,
-            fallback_api_key_env="GEMINI_API_KEY",
+            api_key_role=api_key_role,
         )
         result = _extract_json_payload(_read_response_text(response, normalized_language))
         payload = {
@@ -1084,17 +1119,83 @@ Return ONLY valid JSON in {language_name}:
         return fallback
 
 
+async def generate_film_search_queries(
+    emotion: str,
+    age_group: str | None = None,
+    survey_genres: list[str] | None = None,
+    language: str = "en",
+) -> dict[str, str]:
+    normalized_language = _normalize_language(language)
+    normalized_emotion = normalize_emotion_key(emotion, "calm")
+    normalized_age_group = (age_group or "adult").strip().lower() or "adult"
+    normalized_genres = [
+        str(item).strip().lower().replace("_", " ")
+        for item in (survey_genres or [])
+        if str(item).strip()
+    ]
+    genre_text = ", ".join(normalized_genres) if normalized_genres else "balanced drama, comedy, and comfort films"
+    cache_key = build_cache_key(
+        "film-query-triplet",
+        {
+            "emotion": normalized_emotion,
+            "age_group": normalized_age_group,
+            "survey_genres": normalized_genres,
+            "language": normalized_language,
+        },
+    )
+    cached = await RECOMMENDATION_QUERY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    prompt = f"""
+Generate exactly 3 TMDB movie search queries for a user feeling {normalized_emotion}
+who is in age group {normalized_age_group} and prefers {genre_text}.
+Return ONLY valid JSON:
+{{
+  "query_emotion": "...",
+  "query_genre": "...",
+  "query_context": "..."
+}}
+""".strip()
+    fallback = {
+        "query_emotion": f"{normalized_emotion} healing drama",
+        "query_genre": f"{genre_text.split(',')[0]} movie",
+        "query_context": f"{normalized_age_group} {normalized_emotion} film",
+    }
+
+    try:
+        response = await _generate_content(
+            prompt,
+            normalized_language,
+            "film-query-generation",
+            api_key_role="film_queries",
+        )
+        result = _extract_json_payload(_read_response_text(response, normalized_language))
+        payload = {
+            "query_emotion": str(result.get("query_emotion") or fallback["query_emotion"]).strip(),
+            "query_genre": str(result.get("query_genre") or fallback["query_genre"]).strip(),
+            "query_context": str(result.get("query_context") or fallback["query_context"]).strip(),
+        }
+        await RECOMMENDATION_QUERY_CACHE.set(cache_key, payload)
+        return payload
+    except Exception as exc:
+        print(f"Gemini film query error: {exc}")
+        return fallback
+
+
 async def generate_followup_bundle(
     emotion: str,
     context: str | None = None,
     language: str = "en",
     prefer_followup_key: bool = False,
+    personality_json: str | None = None,
 ) -> dict:
     query_bundle = await generate_recommendation_queries(
         emotion,
         context,
         language,
         prefer_followup_key,
+        personality_json,
     )
     return {
         "coach_comment": query_bundle["coach_advice"],
@@ -1173,8 +1274,7 @@ Requirements:
             prompt,
             "en",
             "avatar-prompt",
-            api_key_env="GEMINI_KEY_RECOMMENDATIONS",
-            fallback_api_key_env="GEMINI_API_KEY",
+            api_key_role="recommendations",
         )
         generated_prompt = _read_response_text(response, "en").strip().strip('"')
         if generated_prompt:
@@ -1228,9 +1328,12 @@ def _looks_model_unavailable(status_code: int, body: str) -> bool:
 
 
 async def _generate_gemini_avatar_image(prompt: str) -> str:
-    api_key = os.getenv("GEMINI_KEY_AVATAR", "").strip()
-    if not api_key:
-        raise GeminiServiceError("Gemini avatar key is not configured.", 500, "AI_CONFIG_ERROR")
+    try:
+        api_key, key_env = gemini_key_manager.get_key("avatar")
+    except GeminiKeyError as exc:
+        raise GeminiServiceError("Gemini avatar key is not configured.", 500, "AI_CONFIG_ERROR") from exc
+
+    print(f"Gemini operation 'avatar-image' using key role 'avatar' from env '{key_env}'.")
 
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],

@@ -18,8 +18,6 @@ const ALLOWED_IMAGE_TYPES = [
   "image/jpg",
   "image/png",
   "image/webp",
-  "image/heic",
-  "image/heif",
 ];
 
 const ANALYSIS_LOADING_STEPS = [
@@ -28,6 +26,18 @@ const ANALYSIS_LOADING_STEPS = [
   "Sana özel öneriler hazırlanıyor...",
   "Neredeyse bitti...",
 ];
+
+const AGE_GROUP_OPTIONS = [
+  { value: "teen", label: "13-17", numericAge: 15 },
+  { value: "young_adult", label: "18-24", numericAge: 21 },
+  { value: "adult", label: "25-39", numericAge: 32 },
+  { value: "mature", label: "40+", numericAge: 50 },
+];
+
+const AGE_GROUP_NUMERIC_AGE = AGE_GROUP_OPTIONS.reduce((lookup, option) => {
+  lookup[option.value] = option.numericAge;
+  return lookup;
+}, {});
 
 const FRIENDLY_ANALYZE_MESSAGES_TR = {
   unsupportedImageType: "Bu dosya formatı desteklenmiyor. Lütfen JPG, PNG veya WebP formatında bir fotoğraf yükle.",
@@ -41,23 +51,30 @@ const FRIENDLY_ANALYZE_MESSAGES_TR = {
 const ANALYZE_ERROR_MESSAGE_BY_CODE = {
   UNSUPPORTED_IMAGE_TYPE: FRIENDLY_ANALYZE_MESSAGES_TR.unsupportedImageType,
   UNSUPPORTED_IMAGE_MIME_TYPE: FRIENDLY_ANALYZE_MESSAGES_TR.unsupportedImageType,
-  INVALID_IMAGE: "FotoÄŸraf okunamadÄ±. LÃ¼tfen farklÄ± bir gÃ¶rsel dene.",
+  INVALID_IMAGE: "Fotoğraf okunamadı. Lütfen farklı bir görsel dene.",
   IMAGE_TOO_LARGE: FRIENDLY_ANALYZE_MESSAGES_TR.imageTooLarge,
-  NO_FACE_DETECTED: "FotoÄŸrafta yÃ¼z bulunamadÄ±. LÃ¼tfen yÃ¼zÃ¼n net gÃ¶rÃ¼ndÃ¼ÄŸÃ¼ bir selfie yÃ¼kle.",
-  MULTIPLE_FACES_DETECTED: "FotoÄŸrafta birden fazla yÃ¼z var. LÃ¼tfen yalnÄ±zca senin yÃ¼zÃ¼nÃ¼n gÃ¶rÃ¼ndÃ¼ÄŸÃ¼ bir fotoÄŸraf yÃ¼kle.",
-  FACE_TOO_SMALL: "YÃ¼zÃ¼n kadrajda Ã§ok kÃ¼Ã§Ã¼k gÃ¶rÃ¼nÃ¼yor. Biraz yaklaÅŸarak tekrar dene.",
-  FACE_MODEL_UNAVAILABLE: "GÃ¶rsel analiz ÅŸu an kullanÄ±lamÄ±yor. Metin ile devam edebilirsin.",
-  IMAGE_UNPROCESSABLE: "GÃ¶rsel iÅŸlenemedi. Metin ekleyerek analizi tamamlayabilirsin.",
-  AI_INVALID_RESPONSE: "Analiz sÄ±rasÄ±nda bir sorun oluÅŸtu. LÃ¼tfen tekrar dene.",
-  SURVEY_REQUIRED: "Analize baÅŸlamadan Ã¶nce kÄ±sa bir anket doldurman gerekiyor. Bu anket sana Ã¶zel sonuÃ§lar Ã¼retmemizi saÄŸlÄ±yor.",
-  survey_required: "Analize baÅŸlamadan Ã¶nce kÄ±sa bir anket doldurman gerekiyor. Bu anket sana Ã¶zel sonuÃ§lar Ã¼retmemizi saÄŸlÄ±yor.",
+  NO_FACE_DETECTED: "Fotoğrafta yüz bulunamadı. Lütfen yüzün net göründüğü bir selfie yükle.",
+  MULTIPLE_FACES_DETECTED: "Fotoğrafta birden fazla yüz var. Lütfen yalnızca senin yüzünün göründüğü bir fotoğraf yükle.",
+  FACE_TOO_SMALL: "Yüzün kadrajda çok küçük görünüyor. Biraz yaklaşarak tekrar dene.",
+  FACE_MODEL_UNAVAILABLE: "Görsel analiz şu an kullanılamıyor. Metin ile devam edebilirsin.",
+  IMAGE_UNPROCESSABLE: "Görsel işlenemedi. Metin ekleyerek analizi tamamlayabilirsin.",
+  AI_INVALID_RESPONSE: "Analiz sırasında bir sorun oluştu. Lütfen tekrar dene.",
+  AI_PROVIDER_ERROR: "Analiz servisi şu an yanıt veremiyor. Lütfen biraz sonra tekrar dene.",
+  AI_SERVICE_UNAVAILABLE: "AI servisine ulaşılamıyor. Lütfen biraz sonra tekrar dene.",
+  ANALYSIS_FAILED_BEFORE_EMOTION: "Duygu sonucu üretilemeden analiz durdu. Lütfen tekrar dene.",
+  ANALYSIS_UNEXPECTED_ERROR: "Analiz sırasında beklenmeyen bir sorun oluştu. Lütfen tekrar dene.",
+  ANALYSIS_INPUT_REQUIRED: "Analize başlamak için metin, selfie ya da ikisinden birini ekle.",
+  MISSING_INPUT: "Analize başlamak için metin, selfie ya da ikisinden birini ekle.",
+  MISSING_CONSENT: "Selfie kullanmadan önce mahremiyet onayını işaretle.",
+  INVALID_TEXT_LENGTH: "Metin 10 ile 1000 karakter arasında olmalı.",
+  AGE_REQUIRED: "Analize başlamadan önce yaşını girmen gerekiyor. Önerileri yaşına uygun hazırlayacağız.",
+  INVALID_AGE: "Yaş 13 ile 120 arasında olmalı.",
+  SURVEY_REQUIRED: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",
+  survey_required: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",
   GUEST_QUOTA_EXCEEDED: FRIENDLY_ANALYZE_MESSAGES_TR.guestQuota,
   ANALYSIS_RETRY_COOLDOWN: FRIENDLY_ANALYZE_MESSAGES_TR.conflictCooldown,
   ANALYSIS_COOLDOWN_ACTIVE: FRIENDLY_ANALYZE_MESSAGES_TR.conflictCooldown,
 };
-
-const PARTIAL_ANALYSIS_ALERT_MESSAGE_TR =
-  "Analizin tamamlandÄ±! Ancak bazÄ± Ã¶neriler ÅŸu an getirilemedi. Duygu durumun ve koÃ§ tavsiyesi aÅŸaÄŸÄ±da hazÄ±r.";
 
 const IMAGE_ALERT_CODES = new Set([
   "UNSUPPORTED_IMAGE_TYPE",
@@ -70,6 +87,14 @@ const IMAGE_ALERT_CODES = new Set([
   "FACE_MODEL_UNAVAILABLE",
   "IMAGE_UNPROCESSABLE",
 ]);
+
+const INPUT_ALERT_CODES = new Set([
+  "MISSING_INPUT",
+  "ANALYSIS_INPUT_REQUIRED",
+  "INVALID_TEXT_LENGTH",
+]);
+
+const CONSENT_ALERT_CODES = new Set(["MISSING_CONSENT"]);
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -96,7 +121,7 @@ function getToastToneClasses(tone = "error") {
       mark: "bg-slate-950 text-amber-200",
       button: "bg-slate-950/10 text-slate-900 hover:bg-slate-950/20",
       message: "text-slate-950/90",
-      hint: "bg-slate-950/8 text-slate-950/80",
+      hint: "bg-slate-950/[0.08] text-slate-950/80",
     };
   }
 
@@ -106,20 +131,29 @@ function getToastToneClasses(tone = "error") {
       mark: "bg-slate-950 text-emerald-200",
       button: "bg-slate-950/10 text-slate-900 hover:bg-slate-950/20",
       message: "text-slate-950/90",
-      hint: "bg-slate-950/8 text-slate-950/80",
+      hint: "bg-slate-950/[0.08] text-slate-950/80",
     };
   }
 
   return {
     shell: "border-red-200/40 bg-[linear-gradient(135deg,rgba(248,113,113,0.94),rgba(220,38,38,0.9))] text-white shadow-[0_24px_80px_rgba(220,38,38,0.28)]",
     mark: "bg-white text-red-700",
-    button: "bg-white/12 text-white hover:bg-white/20",
-    message: "text-white/92",
-    hint: "bg-white/12 text-white/86",
+    button: "bg-white/[0.12] text-white hover:bg-white/20",
+    message: "text-white/[0.92]",
+    hint: "bg-white/[0.12] text-white/[0.86]",
   };
 }
 
-function showAnalysisAlertToast({ title, message, hint, tone = "error", id = "analysis-user-alert", badge = "!" }) {
+function showAnalysisAlertToast({
+  title,
+  message,
+  hint,
+  tone = "error",
+  id = "analysis-user-alert",
+  badge = "!",
+  closeLabel = "Kapat",
+  onDismiss,
+}) {
   const classes = getToastToneClasses(tone);
 
   toast.custom(
@@ -138,10 +172,13 @@ function showAnalysisAlertToast({ title, message, hint, tone = "error", id = "an
               <p className="text-sm font-black uppercase tracking-[0.18em]">{title}</p>
               <button
                 type="button"
-                onClick={() => toast.dismiss(toastInstance.id)}
+                onClick={() => {
+                  toast.dismiss(toastInstance.id);
+                  onDismiss?.();
+                }}
                 className={`rounded-full px-2 py-1 text-xs font-bold transition ${classes.button}`}
               >
-                Kapat
+                {closeLabel}
               </button>
             </div>
             <p className={`mt-2 text-sm font-semibold leading-6 ${classes.message}`}>{message}</p>
@@ -158,7 +195,7 @@ function showAnalysisAlertToast({ title, message, hint, tone = "error", id = "an
   );
 }
 
-function showContradictionToast({ title, message, hint }) {
+function showContradictionToast({ title, message, hint, closeLabel = "Kapat", onDismiss }) {
   toast.custom(
     (toastInstance) => (
       <div
@@ -175,14 +212,17 @@ function showContradictionToast({ title, message, hint }) {
               <p className="text-sm font-black uppercase tracking-[0.18em]">{title}</p>
               <button
                 type="button"
-                onClick={() => toast.dismiss(toastInstance.id)}
+                onClick={() => {
+                  toast.dismiss(toastInstance.id);
+                  onDismiss?.();
+                }}
                 className="rounded-full bg-slate-950/10 px-2 py-1 text-xs font-bold text-slate-900 transition hover:bg-slate-950/20"
               >
-                Kapat
+                {closeLabel}
               </button>
             </div>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-950/90">{message}</p>
-            <p className="mt-3 rounded-2xl bg-slate-950/8 px-3 py-2 text-xs leading-5 text-slate-950/80">{hint}</p>
+            <p className="mt-3 rounded-2xl bg-slate-950/[0.08] px-3 py-2 text-xs leading-5 text-slate-950/80">{hint}</p>
           </div>
         </div>
       </div>
@@ -195,14 +235,15 @@ function showContradictionToast({ title, message, hint }) {
   );
 }
 
-function buildContradictionAlertPayload(copy) {
+function buildContradictionAlertPayload(copy, overrides = {}) {
   return {
-    title: copy.contradictionAlertTitle,
-    message: FRIENDLY_ANALYZE_MESSAGES_TR.conflict,
-    hint: copy.contradictionAlertHint,
+    title: overrides.title || copy.contradictionAlertTitle,
+    message: overrides.message || copy.contradictionAlertMessage,
+    hint: overrides.hint || copy.contradictionAlertHint,
     tone: "warning",
     id: "analysis-contradiction-alert",
     badge: "!",
+    closeLabel: copy.closeAlertLabel,
   };
 }
 
@@ -212,7 +253,10 @@ function buildAnalyzeAlertPayload({ code, message, title, hint, tone, copy }) {
   const isImageError = IMAGE_ALERT_CODES.has(normalizedCode);
   const isQuotaError = normalizedCode === "GUEST_QUOTA_EXCEEDED";
   const isSurveyError = normalizedCode === "SURVEY_REQUIRED" || normalizedCode === "survey_required";
+  const isAgeError = normalizedCode === "AGE_REQUIRED" || normalizedCode === "INVALID_AGE";
   const isCooldownError = normalizedCode === "ANALYSIS_RETRY_COOLDOWN" || normalizedCode === "ANALYSIS_COOLDOWN_ACTIVE";
+  const isInputError = INPUT_ALERT_CODES.has(normalizedCode);
+  const isConsentError = CONSENT_ALERT_CODES.has(normalizedCode);
 
   return {
     title:
@@ -221,11 +265,17 @@ function buildAnalyzeAlertPayload({ code, message, title, hint, tone, copy }) {
         ? copy.quotaAlertTitle
         : isSurveyError
           ? copy.surveyAlertTitle
-          : isCooldownError
-            ? copy.cooldownTitle
-            : isImageError
-              ? copy.imageAlertTitle
-              : copy.errorAlertTitle),
+          : isAgeError
+            ? copy.ageAlertTitle
+            : isCooldownError
+              ? copy.cooldownTitle
+              : isConsentError
+                ? copy.consentAlertTitle
+                : isInputError
+                  ? copy.inputAlertTitle
+                  : isImageError
+                    ? copy.imageAlertTitle
+                    : copy.errorAlertTitle),
     message: resolvedMessage,
     hint:
       hint ||
@@ -233,25 +283,33 @@ function buildAnalyzeAlertPayload({ code, message, title, hint, tone, copy }) {
         ? copy.quotaAlertHint
         : isSurveyError
           ? copy.surveyAlertHint
-          : isCooldownError
-            ? copy.cooldownAlertHint
-            : isImageError
-              ? copy.imageAlertHint
-              : copy.errorAlertHint),
-    tone: tone || (isCooldownError || isSurveyError ? "warning" : "error"),
+          : isAgeError
+            ? copy.ageAlertHint
+            : isCooldownError
+              ? copy.cooldownAlertHint
+              : isConsentError
+                ? copy.consentAlertHint
+                : isInputError
+                  ? copy.inputAlertHint
+                  : isImageError
+                    ? copy.imageAlertHint
+                    : copy.errorAlertHint),
+    tone: tone || (isCooldownError || isSurveyError || isAgeError || isInputError || isConsentError ? "warning" : "error"),
     id: "analysis-user-alert",
-    badge: isCooldownError || isSurveyError ? "!" : "x",
+    badge: isCooldownError || isSurveyError || isAgeError || isInputError || isConsentError ? "!" : "x",
+    closeLabel: copy.closeAlertLabel,
   };
 }
 
 function buildPartialAlertPayload(copy) {
   return {
     title: copy.partialAlertTitle,
-    message: PARTIAL_ANALYSIS_ALERT_MESSAGE_TR,
+    message: copy.partialAlertMessage,
     hint: copy.partialAlertHint,
     tone: "warning",
     id: "analysis-user-alert",
     badge: "!",
+    closeLabel: copy.closeAlertLabel,
   };
 }
 
@@ -271,6 +329,8 @@ export default function AnalyzePage() {
   const promptedSurveyOnEntryRef = useRef(false);
 
   const [text, setText] = useState("");
+  const [age, setAge] = useState("");
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -291,26 +351,33 @@ export default function AnalyzePage() {
   const guestLimit = guestSessionAPI.getDefaultGuestLimit();
   const hasText = text.trim().length > 0;
   const hasImage = Boolean(imageFile);
+  const hasAge = Boolean(selectedAgeGroup);
+  const analysisAge = mapAgeGroupToNumericAge(selectedAgeGroup);
+  const hasValidAge = analysisAge !== null;
   const guestLocked = !isLoggedIn && guestRemaining <= 0;
   const cooldownLocked = cooldownRemaining > 0;
   const analysisMode = getAnalysisMode(hasText, hasImage);
   const modeMeta = copy.modes.find((item) => item.key === analysisMode) || null;
   const cooldownLabel = useMemo(() => formatCooldownLabel(cooldownRemaining), [cooldownRemaining]);
-  const baseReady = (hasText || hasImage) && (!hasImage || consentGiven) && !guestLocked && !cooldownLocked;
+  const baseReady = (hasText || hasImage) && hasValidAge && (!hasImage || consentGiven) && !guestLocked && !cooldownLocked;
   const canSubmit = baseReady && !isAnalyzing;
   const quotaProgress = isLoggedIn ? 100 : clampPercent((guestRemaining / guestLimit) * 100);
-  const contextStrength = useMemo(() => getContextStrength(text.trim().length, t), [text, t]);
   const exampleTexts = useMemo(() => {
     const values = t("analyze.examples", { returnObjects: true });
     return Array.isArray(values) ? values : EXAMPLE_TEXTS;
   }, [t, i18n.language]);
   const analysisLoadingSteps = ANALYSIS_LOADING_STEPS;
-  const readinessItems = useMemo(
+
+  const compactReadinessItems = useMemo(
     () => [
       {
         label: copy.checklist.textLabel,
-        done: hasText,
-        hint: hasText ? contextStrength.label : copy.checklist.textHint,
+        done: text.trim().length >= 10,
+        hint: text.trim().length >= 10
+          ? copy.checklist.textReady
+          : hasText
+            ? copy.checklist.textShort
+            : copy.checklist.textHint,
       },
       {
         label: copy.checklist.imageLabel,
@@ -318,26 +385,12 @@ export default function AnalyzePage() {
         hint: hasImage ? copy.checklist.imageReady : copy.checklist.imageHint,
       },
       {
-        label: copy.checklist.consentLabel,
-        done: !hasImage || consentGiven,
-        hint: hasImage ? (consentGiven ? copy.checklist.consentReady : copy.checklist.consentHint) : copy.checklist.consentOptional,
+        label: copy.checklist.ageLabel,
+        done: hasValidAge,
+        hint: hasValidAge ? copy.checklist.ageReady(selectedAgeGroup) : copy.checklist.ageHint,
       },
-      {
-        label: isLoggedIn ? copy.checklist.accountLabel : copy.checklist.guestLabel,
-        done: isLoggedIn || !guestLocked,
-        hint: isLoggedIn ? copy.checklist.accountHint : guestLocked ? copy.checklist.lockedHint : copy.checklist.remainingHint(guestRemaining),
-      },
-      ...(cooldownLocked
-        ? [
-            {
-              label: copy.checklist.cooldownLabel,
-              done: false,
-              hint: copy.checklist.cooldownHint(cooldownLabel),
-            },
-          ]
-        : []),
     ],
-    [consentGiven, contextStrength.label, copy, cooldownLabel, cooldownLocked, guestLocked, guestRemaining, hasImage, hasText, isLoggedIn],
+    [copy, hasImage, hasText, hasValidAge, selectedAgeGroup, text],
   );
 
   useEffect(() => {
@@ -396,7 +449,7 @@ export default function AnalyzePage() {
     toast.dismiss("analysis-user-alert");
     setContradictionAlert(null);
     setAnalysisAlert(null);
-  }, [text, imageFile, consentGiven]);
+  }, [text, selectedAgeGroup, imageFile, consentGiven]);
 
   useEffect(() => {
     if (!isAnalyzing && !isStudioOpen) {
@@ -552,6 +605,13 @@ export default function AnalyzePage() {
     setExamplePulse((value) => value + 1);
   }
 
+  function selectAgeGroup(ageGroup) {
+    const numericAge = mapAgeGroupToNumericAge(ageGroup);
+    setSelectedAgeGroup(ageGroup);
+    setAge(numericAge === null ? "" : String(numericAge));
+    setAnalysisAlert(null);
+  }
+
   function openLogin() {
     navigate("/login", { state: { from: "/analyze" } });
   }
@@ -582,7 +642,7 @@ export default function AnalyzePage() {
     if (syncError) {
       setError(payload.message);
     }
-    showAnalysisAlertToast(payload);
+    showAnalysisAlertToast({ ...payload, onDismiss: clearAnalyzeAlerts });
   }
 
   async function handleAnalyze() {
@@ -611,8 +671,17 @@ export default function AnalyzePage() {
       raiseAnalysisAlert(buildAnalyzeAlertPayload({
         code: "MISSING_INPUT",
         message: copy.readiness.missingInput,
-        title: copy.errorAlertTitle,
-        hint: copy.errorAlertHint,
+        copy,
+      }));
+      return;
+    }
+
+    if (!hasAge || !hasValidAge) {
+      raiseAnalysisAlert(buildAnalyzeAlertPayload({
+        code: "AGE_REQUIRED",
+        message: copy.readiness.missingAge,
+        title: copy.ageAlertTitle,
+        hint: copy.ageAlertHint,
         copy,
       }));
       return;
@@ -622,8 +691,6 @@ export default function AnalyzePage() {
       raiseAnalysisAlert(buildAnalyzeAlertPayload({
         code: "MISSING_CONSENT",
         message: copy.readiness.missingConsent,
-        title: copy.errorAlertTitle,
-        hint: copy.errorAlertHint,
         copy,
       }));
       return;
@@ -651,6 +718,8 @@ export default function AnalyzePage() {
         imageBase64,
         text: hasText ? text.trim() : "",
         mimeType: hasImage ? imageFile.type || "image/jpeg" : undefined,
+        age: analysisAge,
+        age_group: selectedAgeGroup,
         recommendationSurvey: guestRecommendationSurvey || undefined,
       });
 
@@ -661,13 +730,13 @@ export default function AnalyzePage() {
       if (hasConflictSignal(result)) {
         const alertPayload = buildContradictionAlertPayload(copy);
         setContradictionAlert(alertPayload);
-        showContradictionToast(alertPayload);
+        showContradictionToast({ ...alertPayload, onDismiss: clearAnalyzeAlerts });
       }
 
       if (result.status === "partial") {
         const partialAlertPayload = buildPartialAlertPayload(copy);
         setAnalysisAlert(partialAlertPayload);
-        showAnalysisAlertToast(partialAlertPayload);
+        showAnalysisAlertToast({ ...partialAlertPayload, onDismiss: clearAnalyzeAlerts });
       }
 
       guestSessionAPI.clearAnalysisCooldown();
@@ -689,11 +758,15 @@ export default function AnalyzePage() {
       }
 
       if (requestError.code === "ANALYSIS_CONTRADICTION_WARNING") {
-        const alertPayload = buildContradictionAlertPayload(copy);
+        const alertPayload = buildContradictionAlertPayload(copy, {
+          title: requestError.details?.alertTitle,
+          message: requestError.message,
+          hint: requestError.details?.alertHint,
+        });
         setError("");
         setAnalysisAlert(null);
         setContradictionAlert(alertPayload);
-        showContradictionToast(alertPayload);
+        showContradictionToast({ ...alertPayload, onDismiss: clearAnalyzeAlerts });
         return;
       }
 
@@ -741,9 +814,9 @@ export default function AnalyzePage() {
             canSubmit={canSubmit}
             closeStudio={closeStudio}
             consentGiven={consentGiven}
-            contextStrength={contextStrength}
             contradictionAlert={contradictionAlert}
             analysisAlert={analysisAlert}
+            clearAnalyzeAlerts={clearAnalyzeAlerts}
             cooldownLabel={cooldownLabel}
             cooldownLocked={cooldownLocked}
             error={error}
@@ -753,14 +826,17 @@ export default function AnalyzePage() {
             handleAnalyze={handleAnalyze}
             hasImage={hasImage}
             hasText={hasText}
+            hasValidAge={hasValidAge}
             imageFile={imageFile}
             imagePreview={imagePreview}
             isAnalyzing={isAnalyzing}
             isDragging={isDragging}
             onExample={fillExampleText}
             openLogin={openLogin}
-            readinessItems={readinessItems}
+            readinessItems={compactReadinessItems}
             resetImage={resetImage}
+            selectedAgeGroup={selectedAgeGroup}
+            selectAgeGroup={selectAgeGroup}
             setConsentGiven={setConsentGiven}
             setIsDragging={setIsDragging}
             setText={setText}
@@ -984,11 +1060,10 @@ function StudioLaunchPanel({ copy, modeMeta, hasText, hasImage, canSubmit, readi
 
 function StudioModal({
   copy,
-  analysisMode,
   canSubmit,
+  clearAnalyzeAlerts,
   closeStudio,
   consentGiven,
-  contextStrength,
   contradictionAlert,
   analysisAlert,
   cooldownLabel,
@@ -1000,6 +1075,7 @@ function StudioModal({
   handleAnalyze,
   hasImage,
   hasText,
+  hasValidAge,
   imageFile,
   imagePreview,
   isAnalyzing,
@@ -1008,6 +1084,8 @@ function StudioModal({
   onExample,
   readinessItems,
   resetImage,
+  selectedAgeGroup,
+  selectAgeGroup,
   setConsentGiven,
   setIsDragging,
   setText,
@@ -1021,7 +1099,7 @@ function StudioModal({
   videoRef,
   canvasRef,
 }) {
-  const readinessMessage = getReadinessMessage({ hasText, hasImage, consentGiven, guestLocked, cooldownLocked, cooldownLabel, copy });
+  const readinessMessage = getReadinessMessage({ hasText, hasImage, hasAge: Boolean(selectedAgeGroup), hasValidAge, consentGiven, guestLocked, cooldownLocked, cooldownLabel, copy });
   const visibleAnalysisAlert = contradictionAlert || analysisAlert;
 
   return (
@@ -1046,40 +1124,39 @@ function StudioModal({
         role="dialog"
         aria-modal="true"
         aria-label={copy.studioModalTitle}
-        className="studio-dialog relative z-10 flex h-[calc(100svh-1rem)] w-full max-w-[96rem] flex-col overflow-hidden rounded-[1.2rem] border border-white/12 bg-slate-950/88 shadow-[0_30px_100px_rgba(2,6,23,0.46)] backdrop-blur-2xl sm:h-[calc(100svh-2rem)] lg:rounded-[1.35rem]"
+        className="studio-dialog focus-studio-dialog"
         initial={{ opacity: 0, y: 34, scale: 0.94 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 26, scale: 0.96 }}
         transition={{ type: "spring", stiffness: 260, damping: 28 }}
       >
-        <div className="studio-dialog__header grid shrink-0 gap-3 border-b border-white/10 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <p className="section-eyebrow !px-3 !py-1.5">{copy.studioModalEyebrow}</p>
-            <h2 className="mt-2 text-2xl font-black leading-tight text-white sm:text-3xl">{copy.studioModalTitle}</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">{copy.studioModalDescription}</p>
+        <div className="focus-studio-header">
+          <div className="focus-studio-header-brand">
+            <span className="focus-studio-brand-mark" aria-hidden="true">+</span>
+            <span className="focus-studio-kicker">{copy.studioModalEyebrow}</span>
           </div>
-          <button type="button" onClick={closeStudio} className="btn-secondary w-full !min-h-0 !px-4 !py-2 sm:w-auto">
+          <button type="button" onClick={closeStudio} className="focus-studio-close" aria-label={copy.closeStudioLabel}>
             {copy.closeStudioLabel}
           </button>
         </div>
 
-        <div className="studio-dialog__body min-h-0 flex-1 overflow-hidden p-3 sm:p-4 lg:p-5">
-          <div className="grid h-full min-h-0 grid-cols-1 gap-4 overflow-y-auto pr-1 xl:grid-cols-[minmax(0,1.05fr)_minmax(20rem,0.84fr)_minmax(18rem,0.68fr)] xl:overflow-hidden xl:pr-0">
-            <div className="min-h-0 space-y-4 xl:overflow-y-auto xl:pr-1">
-              <ComposerPanel
-                text={text}
-                onChange={setText}
-                onExample={onExample}
-                contextStrength={contextStrength}
-                examplePulse={examplePulse}
-                copy={copy}
-                t={t}
-              />
-
-              <ModeCards copy={copy} analysisMode={analysisMode} />
+        <div className="focus-studio-body">
+          <div className="focus-studio-layout">
+            <div className="focus-studio-title-block">
+              <h2>{copy.studioModalTitle}</h2>
+              <p>{copy.studioModalDescription}</p>
             </div>
 
-            <div className="min-h-0 space-y-4 xl:overflow-y-auto xl:pr-1">
+            <ComposerPanel
+              text={text}
+              onChange={setText}
+              onExample={onExample}
+              examplePulse={examplePulse}
+              copy={copy}
+              t={t}
+            />
+
+            <div className="focus-studio-input-row">
               <SelfiePanel
                 imagePreview={imagePreview}
                 imageFile={imageFile}
@@ -1098,41 +1175,48 @@ function StudioModal({
                 t={t}
               />
 
-              {hasImage && <ConsentCard consentGiven={consentGiven} setConsentGiven={setConsentGiven} copy={copy} />}
+              <div className="focus-studio-side-stack">
+                <AgeGroupPanel
+                  selectedAgeGroup={selectedAgeGroup}
+                  onSelect={selectAgeGroup}
+                  copy={copy}
+                />
+                <ChecklistPanel items={readinessItems} compact />
+              </div>
             </div>
 
-            <div className="min-h-0 space-y-4 xl:overflow-y-auto xl:pr-1">
-              <ChecklistPanel items={readinessItems} title={copy.checklist.title} />
+            {hasImage && <ConsentCard consentGiven={consentGiven} setConsentGiven={setConsentGiven} copy={copy} />}
 
-              <AnimatePresence>
-                {visibleAnalysisAlert && (
-                  <ContradictionAlertPanel
-                    title={visibleAnalysisAlert.title}
-                    message={visibleAnalysisAlert.message}
-                    hint={visibleAnalysisAlert.hint}
-                    tone={visibleAnalysisAlert.tone}
-                  />
-                )}
-              </AnimatePresence>
+            <AnimatePresence>
+              {visibleAnalysisAlert && (
+                <ContradictionAlertPanel
+                  title={visibleAnalysisAlert.title}
+                  message={visibleAnalysisAlert.message}
+                  hint={visibleAnalysisAlert.hint}
+                  tone={visibleAnalysisAlert.tone}
+                  closeLabel={visibleAnalysisAlert.closeLabel}
+                  onDismiss={clearAnalyzeAlerts}
+                />
+              )}
+            </AnimatePresence>
 
-              <AnimatePresence>
-                {error && !visibleAnalysisAlert && (
-                  <ErrorPanel
-                    error={error}
-                    guestLocked={guestLocked}
-                    cooldownLocked={cooldownLocked}
-                    cooldownLabel={cooldownLabel}
-                    errorTitle={cooldownLocked ? copy.cooldownTitle : guestLocked ? t("analyze.errorLoginRequired") : t("analyze.errorSmallMissing")}
-                    onLogin={openLogin}
-                    t={t}
-                  />
-                )}
-              </AnimatePresence>
-            </div>
+            <AnimatePresence>
+              {error && !visibleAnalysisAlert && (
+                <ErrorPanel
+                  error={error}
+                  guestLocked={guestLocked}
+                  cooldownLocked={cooldownLocked}
+                  cooldownLabel={cooldownLabel}
+                  errorTitle={cooldownLocked ? copy.cooldownTitle : guestLocked ? t("analyze.errorLoginRequired") : t("analyze.errorSmallMissing")}
+                  onLogin={openLogin}
+                  t={t}
+                />
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/10 p-3 sm:p-4">
+        <div className="focus-studio-footer">
           <ActionBar
             canSubmit={canSubmit}
             isAnalyzing={isAnalyzing}
@@ -1140,7 +1224,7 @@ function StudioModal({
             cooldownLocked={cooldownLocked}
             cooldownLabel={cooldownLabel}
             readinessMessage={readinessMessage}
-            onAnalyze={guestLocked ? openLogin : handleAnalyze}
+            onAnalyze={handleAnalyze}
             copy={copy}
             t={t}
             variant="modal"
@@ -1198,28 +1282,19 @@ function GuestQuotaPanel({ isLoggedIn, guestRemaining, guestLimit, quotaProgress
   );
 }
 
-function ComposerPanel({ text, onChange, onExample, contextStrength, examplePulse, copy, t }) {
-  const progress = clampPercent((text.length / 1000) * 100);
-
+function ComposerPanel({ text, onChange, examplePulse, copy, t }) {
   return (
     <motion.section
       initial={{ opacity: 0, x: -18 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.12 }}
-      className="premium-card premium-card-hover p-4 sm:p-5"
+      className="studio-card studio-card--composer"
     >
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="studio-card__header studio-card__header--compact">
         <div>
-          <p className="section-eyebrow !px-3 !py-1.5">{copy.composerEyebrow}</p>
-          <h2 className="mt-3 text-xl font-black text-white">{copy.composerTitle}</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-400">{copy.composerDescription}</p>
+          <h2>{copy.composerEyebrow}</h2>
         </div>
-        <span
-          className="rounded-full border px-3 py-1 text-xs font-bold"
-          style={{ borderColor: `${contextStrength.color}55`, color: contextStrength.color }}
-        >
-          {contextStrength.label}
-        </span>
+        <span className="studio-card__badge">{copy.optionalBadge}</span>
       </div>
 
       <motion.textarea
@@ -1229,23 +1304,14 @@ function ComposerPanel({ text, onChange, onExample, contextStrength, examplePuls
         aria-label={t("analyze.textareaAria")}
         aria-describedby="emotion-context-strength"
         placeholder={t("analyze.textareaPlaceholder")}
+        minLength={10}
         maxLength={1000}
-        className="input-field min-h-[10rem] resize-none !rounded-[1.35rem] !p-4 text-base leading-7 sm:min-h-[12rem] 2xl:min-h-[14rem]"
+        className="studio-textarea"
       />
 
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <button type="button" onClick={onExample} className="btn-secondary self-start !px-4 !py-2">
-          {t("analyze.inspire")}
-        </button>
-        <div className="min-w-52">
-          <div id="emotion-context-strength" className="flex items-center justify-between text-xs text-slate-500">
-            <span>{t("analyze.contextStrength")}</span>
-            <span>{text.length}/1000</span>
-          </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <span className="block h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: contextStrength.color }} />
-          </div>
-        </div>
+      <div className="studio-input-footer">
+        <p id="emotion-context-strength" className="studio-field-hint">{copy.textLimitHint}</p>
+        <span className="studio-field-count">{text.length}/1000</span>
       </div>
     </motion.section>
   );
@@ -1317,17 +1383,18 @@ function SelfiePanel({
       initial={{ opacity: 0, x: 18 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.18 }}
-      className="premium-card p-4 sm:p-5"
+      className="studio-card studio-card--media"
     >
-      <div className="mb-4">
-        <p className="section-eyebrow !px-3 !py-1.5">{copy.selfieEyebrow}</p>
-        <h2 className="mt-3 text-xl font-black text-white">{copy.selfieTitle}</h2>
-        <p className="mt-1 text-sm leading-6 text-slate-400">{copy.selfieDescription}</p>
+      <div className="studio-card__header studio-card__header--compact">
+        <div>
+          <h2>{copy.selfieEyebrow}</h2>
+        </div>
+        <span className="studio-card__badge">{copy.optionalBadge}</span>
       </div>
 
       {imagePreview ? (
         <div className="relative overflow-hidden rounded-[1.45rem] border border-cyan-200/25">
-          <img src={imagePreview} alt={copy.selfieReady} className="h-60 w-full object-cover 2xl:h-72" />
+          <img src={imagePreview} alt={copy.selfieReady} className="h-40 w-full object-cover xl:h-44" />
           <ScanOverlay />
           <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 bg-gradient-to-t from-slate-950/85 via-slate-950/35 to-transparent p-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -1349,7 +1416,7 @@ function SelfiePanel({
       ) : showCamera ? (
         <div>
           <div className="relative overflow-hidden rounded-[2rem] border border-cyan-200/25 bg-slate-950">
-            <video ref={videoRef} autoPlay playsInline muted className="h-60 w-full object-cover 2xl:h-72" />
+            <video ref={videoRef} autoPlay playsInline muted className="h-40 w-full object-cover xl:h-44" />
             <ScanOverlay />
             <CornerFrame />
           </div>
@@ -1377,20 +1444,15 @@ function SelfiePanel({
             validateAndSetFile(event.dataTransfer.files[0]);
           }}
           onClick={() => fileInputRef.current?.click()}
-          className={`focus-ring relative flex min-h-60 w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[1.45rem] border-2 border-dashed px-5 text-center transition-all 2xl:min-h-72 ${
-            isDragging ? "border-cyan-200 bg-cyan-200/10 shadow-2xl shadow-cyan-950/25" : "border-white/15 bg-white/[0.05] hover:border-cyan-200/45"
-          }`}
+          className={`studio-upload-zone focus-ring ${isDragging ? "is-dragging" : ""}`}
           aria-label={t("analyze.uploadAria")}
         >
-          <ScanOverlay subtle />
-          <span className="orb mb-4 h-14 w-14" aria-hidden="true">
-            <span className="relative z-10 h-3 w-3 rounded-full bg-cyan-100" />
-          </span>
-          <p className="text-lg font-black text-white">{copy.dropTitle}</p>
-          <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">{copy.dropDescription}</p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            {["JPG", "PNG", "WebP", "HEIC", "HEIF"].map((type) => (
-              <span key={type} className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-xs font-bold text-slate-300">
+          <span className="studio-upload-mark" aria-hidden="true">+</span>
+          <p>{copy.dropTitle}</p>
+          <small>{copy.dropDescription}</small>
+          <div className="studio-file-types">
+            {["JPG", "PNG", "WebP"].map((type) => (
+              <span key={type}>
                 {type}
               </span>
             ))}
@@ -1418,12 +1480,45 @@ function SelfiePanel({
   );
 }
 
+function AgeGroupPanel({ selectedAgeGroup, onSelect, copy }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="studio-card studio-card--age-group"
+    >
+      <div className="studio-card__header studio-card__header--compact">
+        <div>
+          <h2>{copy.ageGroupTitle}</h2>
+        </div>
+        <span className="studio-card__badge is-warning">{copy.requiredBadge}</span>
+      </div>
+
+      <div className="studio-age-options" role="group" aria-label={copy.ageGroupTitle}>
+        {AGE_GROUP_OPTIONS.map((option) => {
+          const isSelected = selectedAgeGroup === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              className={`studio-age-option ${isSelected ? "is-selected" : ""}`}
+              aria-pressed={isSelected}
+              onClick={() => onSelect(option.value)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </motion.section>
+  );
+}
+
 function ConsentCard({ consentGiven, setConsentGiven, copy }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-4 rounded-[1.25rem] border p-4 transition-all ${
-        consentGiven ? "border-cyan-200/35 bg-cyan-200/10 shadow-xl shadow-cyan-950/10" : "border-white/10 bg-white/[0.05] hover:border-white/20"
-      }`}
+      className={`studio-consent-card ${consentGiven ? "is-checked" : ""}`}
     >
       <input
         id="analysis-consent"
@@ -1431,11 +1526,11 @@ function ConsentCard({ consentGiven, setConsentGiven, copy }) {
         checked={consentGiven}
         onChange={(event) => setConsentGiven(event.target.checked)}
         aria-describedby="analysis-consent-description"
-        className="mt-1 h-5 w-5 accent-cyan-300"
+        className="studio-consent-checkbox"
       />
-      <span>
-        <span className="block text-sm font-black text-white">{copy.consentTitle}</span>
-        <span id="analysis-consent-description" className="mt-1 block text-xs leading-6 text-slate-400">
+      <span className="studio-consent-copy">
+        <span className="studio-consent-title">{copy.consentTitle}</span>
+        <span id="analysis-consent-description" className="studio-consent-description">
           {copy.consentDescription}
         </span>
       </span>
@@ -1443,24 +1538,20 @@ function ConsentCard({ consentGiven, setConsentGiven, copy }) {
   );
 }
 
-function ChecklistPanel({ items, title }) {
+function ChecklistPanel({ items, title, compact = false }) {
   return (
-    <section className="surface-panel rounded-[1.25rem] p-4">
-      <h2 className="text-lg font-black text-white">{title}</h2>
-      <div className="mt-3 space-y-2.5">
+    <section className={`studio-card studio-checklist-card ${compact ? "is-compact" : ""}`}>
+      {title && <h2>{title}</h2>}
+      <div className={`studio-checklist ${compact ? "is-compact" : ""}`}>
         {items.map((item) => (
-          <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.05] p-3">
-            <span
-              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                item.done ? "bg-emerald-300 text-slate-950" : "bg-amber-300/15 text-amber-100"
-              }`}
-            >
+          <div key={item.label} className="studio-check-item">
+            <span className={item.done ? "is-done" : ""}>
               {item.done ? "✓" : "!"}
             </span>
-            <span>
-              <span className="block text-sm font-bold text-white">{item.label}</span>
-              <span className="line-clamp-2 text-xs leading-5 text-slate-500">{item.hint}</span>
-            </span>
+            <div>
+              <strong>{item.label}</strong>
+              <small>{item.hint}</small>
+            </div>
           </div>
         ))}
       </div>
@@ -1474,6 +1565,8 @@ function ErrorPanel({ error, guestLocked, cooldownLocked, cooldownLabel, errorTi
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
+      role="alert"
+      aria-live="assertive"
       className={`rounded-[1.5rem] p-5 ${
         cooldownLocked
           ? "border border-amber-200/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.16),rgba(15,23,42,0.92))] shadow-[0_20px_70px_rgba(245,158,11,0.12)]"
@@ -1515,7 +1608,7 @@ function ErrorPanel({ error, guestLocked, cooldownLocked, cooldownLabel, errorTi
   );
 }
 
-function ContradictionAlertPanel({ title, message, hint, tone = "warning" }) {
+function ContradictionAlertPanel({ title, message, hint, tone = "warning", closeLabel = "Kapat", onDismiss }) {
   const isError = tone === "error";
   const isSuccess = tone === "success";
   const shellClass = isSuccess
@@ -1531,13 +1624,15 @@ function ContradictionAlertPanel({ title, message, hint, tone = "warning" }) {
   const titleClass = isSuccess ? "text-emerald-100" : isError ? "text-red-100" : "text-amber-100";
   const bodyClass = isSuccess ? "text-emerald-50/95" : isError ? "text-red-50/92" : "text-amber-50/95";
   const badgeClass = isSuccess ? "bg-emerald-200 text-slate-950" : isError ? "bg-red-200 text-slate-950" : "bg-amber-200 text-slate-950";
-  const badgeLabel = isSuccess ? "Bilgi" : isError ? "Uyari" : "Dikkat";
+  const badgeLabel = isSuccess ? "Bilgi" : isError ? "Uyarı" : "Dikkat";
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
+      role="alert"
+      aria-live="assertive"
       className={`rounded-[1.7rem] border p-5 ${shellClass}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1560,6 +1655,15 @@ function ContradictionAlertPanel({ title, message, hint, tone = "warning" }) {
             )}
           </div>
         </div>
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-slate-100 transition hover:bg-white/[0.12]"
+          >
+            {closeLabel}
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -1568,8 +1672,30 @@ function ContradictionAlertPanel({ title, message, hint, tone = "warning" }) {
 function ActionBar({ canSubmit, isAnalyzing, guestLocked, cooldownLocked, cooldownLabel, readinessMessage, onAnalyze, copy, t, variant = "page" }) {
   const isModal = variant === "modal";
 
+  if (isModal) {
+    return (
+      <section className="focus-studio-actionbar">
+        <button
+          type="button"
+          onClick={onAnalyze}
+          disabled={isAnalyzing}
+          aria-busy={isAnalyzing}
+          className="btn-primary focus-studio-submit"
+        >
+          {isAnalyzing
+            ? t("analyze.analyzing")
+            : cooldownLocked
+              ? copy.cooldownCta(cooldownLabel)
+              : guestLocked
+                ? t("analyze.continueWithLogin")
+                : t("actions.startAnalysis")}
+        </button>
+      </section>
+    );
+  }
+
   return (
-    <section className={isModal ? "p-0" : "premium-card sticky bottom-[6.65rem] z-20 p-4 sm:bottom-6 lg:static lg:p-5"}>
+    <section className="premium-card sticky bottom-[6.65rem] z-20 p-4 sm:bottom-6 lg:static lg:p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-black text-white">
@@ -1586,9 +1712,9 @@ function ActionBar({ canSubmit, isAnalyzing, guestLocked, cooldownLocked, cooldo
         <button
           type="button"
           onClick={onAnalyze}
-          disabled={isAnalyzing || (!canSubmit && !guestLocked)}
+          disabled={isAnalyzing}
           aria-busy={isAnalyzing}
-          className={`btn-primary w-full text-base lg:w-auto lg:min-w-72 ${isModal ? "!py-3" : "!py-4"}`}
+          className="btn-primary w-full text-sm lg:w-auto lg:min-w-56 !py-4"
         >
           {isAnalyzing
             ? t("analyze.analyzing")
@@ -1715,9 +1841,23 @@ function getAnalyzeCopy(language) {
       studioModalTitle: "Add your input here",
       studioModalDescription: "Add only what you want: a short note, a selfie, or both.",
       closeStudioLabel: "Close",
+      closeAlertLabel: "Dismiss",
+      optionalBadge: "Optional",
+      requiredBadge: "Required",
+      textLimitHint: "Use 10-1000 characters if you write a note.",
       composerEyebrow: "Emotion journal",
       composerTitle: "Write what you feel",
       composerDescription: "A short sentence is enough. You do not need to explain everything.",
+      ageGroupTitle: "Age range",
+      ageEyebrow: "Age criterion",
+      ageTitle: "Enter your age",
+      ageDescription: "Recommendations will use your age as a personalization criterion.",
+      ageInputLabel: "Age",
+      agePlaceholder: "Example: 24",
+      ageHint: "Required for age-appropriate recommendations.",
+      ageInvalidHint: "Enter a whole age between 13 and 120.",
+      ageReadyBadge: "ready",
+      ageRequiredBadge: "required",
       modeEyebrow: "Choice",
       modeTitle: "Choose a flexible flow",
       modeDescription: "Use text, selfie, or both. Choose whichever feels natural.",
@@ -1735,9 +1875,15 @@ function getAnalyzeCopy(language) {
         title: "Analysis readiness",
         textLabel: "Text context",
         textHint: "Optional, but helpful.",
+        textShort: "Use at least 10 characters or leave it empty.",
+        textReady: "Text context is enough.",
         imageLabel: "Selfie signal",
         imageHint: "Optional.",
         imageReady: "Visual signal is ready.",
+        ageLabel: "Age range",
+        ageHint: "Select one range for recommendations.",
+        ageInvalid: "Select a valid age range.",
+        ageReady: (ageGroup) => `${getAgeGroupLabel(ageGroup)} selected.`,
         consentLabel: "Privacy consent",
         consentHint: "Required only if a selfie is used.",
         consentReady: "Consent recorded.",
@@ -1752,6 +1898,8 @@ function getAnalyzeCopy(language) {
       },
       readiness: {
         missingInput: "Start with a selfie, a text entry, or both together.",
+        missingAge: "Select your age range so recommendations can be age-appropriate.",
+        invalidAge: "Select a valid age range.",
         missingConsent: "Please confirm privacy consent before using a selfie.",
         readyText: "Text is ready. You can start the analysis.",
         readyImage: "Selfie is ready. You can start the analysis.",
@@ -1793,6 +1941,12 @@ function getAnalyzeCopy(language) {
       contradictionAlertHint: "If you retry, the system will verify the result with another analysis key.",
       imageAlertTitle: "Photo needs attention",
       imageAlertHint: "Update the selfie and start the analysis again when it is ready.",
+      inputAlertTitle: "Input needed",
+      inputAlertHint: "Add a note, selfie, or both before starting.",
+      consentAlertTitle: "Privacy consent needed",
+      consentAlertHint: "Tick the consent box before analyzing a selfie.",
+      ageAlertTitle: "Age range is required",
+      ageAlertHint: "Select one of the four age ranges.",
       surveyAlertTitle: "Short survey required",
       surveyAlertHint: "Complete the survey once, then the analysis will continue with your preferences.",
       quotaAlertTitle: "Guest limit reached",
@@ -1800,6 +1954,7 @@ function getAnalyzeCopy(language) {
       errorAlertTitle: "Analysis could not continue",
       errorAlertHint: "Check the message above and try again.",
       partialAlertTitle: "Analysis completed partially",
+      partialAlertMessage: "Your analysis is complete, but some recommendations could not be loaded right now. Your mood result and coaching note are ready below.",
       partialAlertHint: "Your mood result is ready; some recommendation providers can be retried later.",
       cooldownAlertHint: "Wait one minute before starting a new check.",
       genericAlertMessage: "Something went wrong during analysis. Please try again.",
@@ -1842,9 +1997,23 @@ function getAnalyzeCopy(language) {
     studioModalTitle: "Girdini burada ekle",
     studioModalDescription: "İstersen kısa bir not, istersen selfie, istersen ikisini birlikte kullan.",
     closeStudioLabel: "Kapat",
+    closeAlertLabel: "Kapat",
+    optionalBadge: "İsteğe bağlı",
+    requiredBadge: "Zorunlu",
+    textLimitHint: "Yazarsan 10-1000 karakter arası kullan.",
     composerEyebrow: "Duygu günlüğü",
     composerTitle: "Ne hissettiğini yaz",
     composerDescription: "Bir cümle bile yeter. Her şeyi uzun uzun anlatmana gerek yok.",
+    ageGroupTitle: "Yaş Aralığı",
+    ageEyebrow: "Yaş kriteri",
+    ageTitle: "Yaşını gir",
+    ageDescription: "Öneriler hazırlanırken yaşın da kişiselleştirme kriteri olarak kullanılacak.",
+    ageInputLabel: "Yaş",
+    agePlaceholder: "Örnek: 24",
+    ageHint: "Yaşa uygun öneriler için zorunlu.",
+    ageInvalidHint: "13 ile 120 arasında tam sayı gir.",
+    ageReadyBadge: "hazır",
+    ageRequiredBadge: "zorunlu",
     modeEyebrow: "Seçim",
     modeTitle: "Esnek bir akış seç",
     modeDescription: "Metin, selfie ya da ikisi. Sana hangisi kolay geliyorsa onu seç.",
@@ -1862,9 +2031,15 @@ function getAnalyzeCopy(language) {
       title: "Analiz hazırlığı",
       textLabel: "Metin bağlamı",
       textHint: "Zorunlu değil; ama faydalı.",
+      textShort: "10 karakteri tamamla ya da boş bırak.",
+      textReady: "Metin bağlamı yeterli.",
       imageLabel: "Selfie sinyali",
       imageHint: "Zorunlu değil.",
       imageReady: "Görsel sinyal hazır.",
+      ageLabel: "Yaş aralığı",
+      ageHint: "Öneriler için bir aralık seç.",
+      ageInvalid: "Geçerli bir yaş aralığı seç.",
+      ageReady: (ageGroup) => `${getAgeGroupLabel(ageGroup)} seçildi.`,
       consentLabel: "Mahremiyet onayı",
       consentHint: "Sadece selfie kullanılırsa gerekir.",
       consentReady: "Onay kaydedildi.",
@@ -1879,6 +2054,8 @@ function getAnalyzeCopy(language) {
     },
     readiness: {
       missingInput: "Selfie, metin ya da ikisini birlikte ekleyerek analizi başlat.",
+      missingAge: "Önerileri yaşına uygun hazırlayabilmemiz için yaş aralığını seç.",
+      invalidAge: "Geçerli bir yaş aralığı seç.",
       missingConsent: "Selfie kullanmadan önce mahremiyet onayını işaretle.",
       readyText: "Metin hazır. Analizi başlatabilirsin.",
       readyImage: "Selfie hazır. Analizi başlatabilirsin.",
@@ -1917,20 +2094,27 @@ function getAnalyzeCopy(language) {
     overlayDescription: "Girdini sade bir sonuca ve işe yarar önerilere çeviriyoruz.",
     contradictionAlertTitle: "Zit duygu tespiti",
     contradictionAlertMessage: "Selfie ve metin birbirine zıt görünüyor. Duygu durumundan emin misin?",
-    contradictionAlertHint: "Tekrar denersen sistemi farkli bir analiz anahtariyla yeniden kontrol edecegiz.",
+    contradictionAlertHint: "Tekrar denersen sistemi farklı bir analiz anahtarıyla yeniden kontrol edeceğiz.",
     cooldownTitle: "1 dakikalık bekleme aktif",
-    imageAlertTitle: "FotoÄŸraf kontrol edilmeli",
-    imageAlertHint: "Selfieni gÃ¼ncelleyip hazÄ±r olduÄŸunda analizi yeniden baÅŸlatabilirsin.",
-    surveyAlertTitle: "KÄ±sa anket gerekli",
-    surveyAlertHint: "Anketi bir kez doldurduÄŸunda analiz tercihlerinle devam edecek.",
-    quotaAlertTitle: "Misafir hakkÄ± doldu",
-    quotaAlertHint: "Devam etmek ve geÃ§miÅŸini saklamak iÃ§in Ã¼cretsiz hesap oluÅŸturabilirsin.",
+    imageAlertTitle: "Fotoğraf kontrol edilmeli",
+    imageAlertHint: "Selfieni güncelleyip hazır olduğunda analizi yeniden başlatabilirsin.",
+    inputAlertTitle: "Girdi gerekli",
+    inputAlertHint: "Metin, selfie ya da ikisini ekledikten sonra analizi başlatabilirsin.",
+    consentAlertTitle: "Mahremiyet onayı gerekli",
+    consentAlertHint: "Selfieyi analiz etmek için mahremiyet onayını işaretle.",
+    ageAlertTitle: "Yaş aralığı gerekli",
+    ageAlertHint: "Dört yaş aralığından birini seç.",
+    surveyAlertTitle: "Kısa anket gerekli",
+    surveyAlertHint: "Anketi bir kez doldurduğunda analiz tercihlerinle devam edecek.",
+    quotaAlertTitle: "Misafir hakkı doldu",
+    quotaAlertHint: "Devam etmek ve geçmişini saklamak için ücretsiz hesap oluşturabilirsin.",
     errorAlertTitle: "Analiz devam edemedi",
-    errorAlertHint: "YukarÄ±daki mesajÄ± kontrol edip tekrar deneyebilirsin.",
-    partialAlertTitle: "Analiz kÄ±smi tamamlandÄ±",
-    partialAlertHint: "Duygu sonucun hazÄ±r; bazÄ± Ã¶neriler daha sonra tekrar getirilebilir.",
-    cooldownAlertHint: "Yeni kontrol iÃ§in 1 dakika beklemen gerekiyor.",
-    genericAlertMessage: "Analiz sÄ±rasÄ±nda bir sorun oluÅŸtu. LÃ¼tfen tekrar dene.",
+    errorAlertHint: "Yukarıdaki mesajı kontrol edip tekrar deneyebilirsin.",
+    partialAlertTitle: "Analiz kısmi tamamlandı",
+    partialAlertMessage: "Analizin tamamlandı! Ancak bazı öneriler şu an getirilemedi. Duygu durumun ve koç tavsiyesi aşağıda hazır.",
+    partialAlertHint: "Duygu sonucun hazır; bazı öneriler daha sonra tekrar getirilebilir.",
+    cooldownAlertHint: "Yeni kontrol için 1 dakika beklemen gerekiyor.",
+    genericAlertMessage: "Analiz sırasında bir sorun oluştu. Lütfen tekrar dene.",
     cooldownCta: (label) => `${label} bekle`,
   };
 }
@@ -1951,7 +2135,15 @@ function getAnalysisMode(hasText, hasImage) {
   return "empty";
 }
 
-function getReadinessMessage({ hasText, hasImage, consentGiven, guestLocked, cooldownLocked, cooldownLabel, copy }) {
+function mapAgeGroupToNumericAge(ageGroup) {
+  return AGE_GROUP_NUMERIC_AGE[ageGroup] || null;
+}
+
+function getAgeGroupLabel(ageGroup) {
+  return AGE_GROUP_OPTIONS.find((option) => option.value === ageGroup)?.label || "";
+}
+
+function getReadinessMessage({ hasText, hasImage, hasAge, hasValidAge, consentGiven, guestLocked, cooldownLocked, cooldownLabel, copy }) {
   if (cooldownLocked) {
     return copy.readiness.cooldown(cooldownLabel);
   }
@@ -1962,6 +2154,14 @@ function getReadinessMessage({ hasText, hasImage, consentGiven, guestLocked, coo
 
   if (!hasText && !hasImage) {
     return copy.readiness.missingInput;
+  }
+
+  if (!hasAge) {
+    return copy.readiness.missingAge;
+  }
+
+  if (!hasValidAge) {
+    return copy.readiness.invalidAge;
   }
 
   if (hasImage && !consentGiven) {

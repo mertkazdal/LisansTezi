@@ -99,9 +99,84 @@ describe("ResultPage", () => {
     const explanationText = screen.getByText(/metin ve selfie bir arada degerlendirildi/i);
 
     expect(screen.getByText(/dikkat edilmesi gereken not/i)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(
       warningText.compareDocumentPosition(explanationText) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("shows a fallback warning when contradiction flag arrives without warning text", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/result/history-contradiction",
+            state: {
+              analysisResult: {
+                historyId: "history-contradiction",
+                emotion: "sad",
+                confidence: 0.77,
+                explanation: "Sonuc yeniden kontrol edildi.",
+                contradictionDetected: true,
+                modalityUsed: "multimodal",
+                modelUsed: "local-face-model + gemini-text",
+                faceDetected: true,
+                recommendations: {
+                  music: [],
+                  movie: [],
+                  book: [],
+                  advice: [],
+                },
+              },
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/result/:historyId" element={<ResultPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText((text) => text.includes("Selfie ve metin") && text.includes("hazırlanmadan"))).toBeInTheDocument();
+    expect(screen.getByText(/dikkat edilmesi gereken not/i)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("shows the fallback warning for snake_case conflict signals too", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/result/history-conflict",
+            state: {
+              analysisResult: {
+                historyId: "history-conflict",
+                emotion: "sad",
+                confidence: 0.77,
+                explanation: "Sonuc yeniden kontrol edildi.",
+                conflict_detected: true,
+                modalityUsed: "multimodal",
+                modelUsed: "local-face-model + gemini-text",
+                faceDetected: true,
+                recommendations: {
+                  music: [],
+                  movie: [],
+                  book: [],
+                  advice: [],
+                },
+              },
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/result/:historyId" element={<ResultPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/selfie ve metin farklı duygulara işaret etti/i);
   });
 
   it("auto-selects the first tab that actually has recommendations", async () => {

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MoodLens.ApiGateway.DTOs;
 
 // --- Auth DTOs ---
@@ -31,6 +33,7 @@ public class RecommendationSurveyResponse
 public class PersonalitySurveySubmitRequest
 {
     public Dictionary<int, int> Answers { get; set; } = new();
+    public string? AgeGroup { get; set; }
 }
 
 public class LoginRequest
@@ -60,6 +63,9 @@ public class AnalyzeRequest
     public string? ImageBase64 { get; set; }
     public string? Text { get; set; }
     public string? MimeType { get; set; }
+    public int? Age { get; set; }
+    [JsonPropertyName("age_group")]
+    public string? AgeGroup { get; set; }
     public string? GuestSessionId { get; set; }
     public RecommendationSurveyRequest? RecommendationSurvey { get; set; }
 }

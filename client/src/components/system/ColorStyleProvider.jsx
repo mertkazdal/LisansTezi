@@ -6,7 +6,7 @@ export const COLOR_THEME_STORAGE_KEY = "life-coach-color-theme";
 export const COLOR_THEMES = [
   { id: "kirmizi", label: "Kırmızı", primary: "#E2231A" },
   { id: "mavi", label: "Mavi", primary: "#1A5CE2" },
-  { id: "yesil", label: "Yeşil", primary: "#22A655" },
+  { id: "yesil", label: "Yeşil", primary: "#17813F" },
   { id: "sari", label: "Sarı", primary: "#E2A800" },
   { id: "siyah", label: "Siyah", primary: "#111111" },
   { id: "beyaz", label: "Beyaz", primary: "#F5F5F5" },

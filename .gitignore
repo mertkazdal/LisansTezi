@@ -23,6 +23,11 @@ client/build.log
 client/vite-dev.*.log
 *.log
 
+# Local runtime
+local-data/
+logs/
+ai-service/.venv/
+
 # Flutter/mobile
 nihaitezmobil/.dart_tool/
 nihaitezmobil/build/

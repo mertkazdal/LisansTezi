@@ -91,29 +91,34 @@ export default function HistoryPage() {
 
   return (
     <div className="page-shell aurora-bg app-page-tone history-page">
-      <div className="relative z-10 mx-auto max-w-7xl space-y-6">
+      <div className="relative z-10 mx-auto max-w-6xl space-y-4">
         <HistoryHero onAnalyze={() => navigate("/analyze")} t={t} />
 
-        <section className="premium-card p-4 sm:p-5">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-end">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <HistorySummaryPill label={t("history.pageSummary")} value={String(summary.count)} />
-              <HistorySummaryPill label={t("history.topEmotion")} value={summary.topEmotion.label} accentColor={summary.topEmotion.accentColor} />
-              <HistorySummaryPill label={t("history.combinedAnalyses")} value={String(summary.multimodalCount)} />
+        <section className="surface-panel-strong p-4 sm:p-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-stretch">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <HistorySummaryPill label={t("history.pageSummary")} value={String(summary.count)} detail={t("history.summaryCountDetail")} />
+              <HistorySummaryPill label={t("history.topEmotion")} value={summary.topEmotion.label} detail={t("history.topEmotionDetail")} accentColor={summary.topEmotion.accentColor} />
+              <HistorySummaryPill label={t("history.combinedAnalyses")} value={String(summary.multimodalCount)} detail={t("history.combinedAnalysesDetail")} />
+              <HistorySummaryPill label={t("history.faceSignal")} value={String(summary.faceDetectedCount)} detail={t("history.faceSignalDetail")} />
             </div>
-            <select
-              value={filterEmotion}
-              onChange={(event) => handleFilterChange(event.target.value)}
-              className="input-field w-full"
-              aria-label={t("history.filterAria")}
-            >
-              <option value="all">{t("history.allEmotions")}</option>
-              {getEmotionOptions().slice(0, 12).map((emotion) => (
-                <option key={emotion.key} value={emotion.key}>
-                  {getEmotionMeta(emotion.key, i18n.language).label}
-                </option>
-              ))}
-            </select>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">
+              <p className="text-sm font-black text-white">{t("history.filterTitle")}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{t("history.filterDescription")}</p>
+              <select
+                value={filterEmotion}
+                onChange={(event) => handleFilterChange(event.target.value)}
+                className="input-field mt-3 w-full"
+                aria-label={t("history.filterAria")}
+              >
+                <option value="all">{t("history.allEmotions")}</option>
+                {getEmotionOptions().slice(0, 12).map((emotion) => (
+                  <option key={emotion.key} value={emotion.key}>
+                    {getEmotionMeta(emotion.key, i18n.language).label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </section>
 
@@ -167,17 +172,17 @@ function HistoryHero({ onAnalyze, t }) {
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, ease: "easeOut" }}
-      className="surface-panel-strong relative overflow-hidden p-5 sm:p-8"
+      className="surface-panel-strong relative overflow-hidden p-5 sm:p-6"
     >
-      <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/12 blur-3xl" />
-      <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-cyan-300/10 blur-3xl" />
+      <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <p className="section-eyebrow">{t("history.heroEyebrow")}</p>
-          <h1 className="mt-5 text-3xl font-black leading-tight text-white sm:text-5xl">
+          <h1 className="mt-3 text-2xl font-black leading-tight text-white sm:text-4xl">
             {t("history.heroTitle")}
             <span className="gradient-text block">{t("history.heroTitleSuffix")}</span>
           </h1>
-          <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300">
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
             {t("history.heroDescription")}
           </p>
         </div>
@@ -191,13 +196,14 @@ function HistoryHero({ onAnalyze, t }) {
   );
 }
 
-function HistorySummaryPill({ label, value, accentColor = "#38bdf8" }) {
+function HistorySummaryPill({ label, value, detail, accentColor = "#38bdf8" }) {
   return (
-    <div className="min-h-[5rem] rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3">
+    <div className="min-h-[5.4rem] rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2.5">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <p className="mt-1 break-words text-base font-black text-white" style={{ color: accentColor === "#38bdf8" ? undefined : accentColor }}>
         {value}
       </p>
+      {detail && <p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p>}
     </div>
   );
 }
@@ -205,6 +211,7 @@ function HistorySummaryPill({ label, value, accentColor = "#38bdf8" }) {
 function HistoryTimelineItem({ item, index, onSelect, t, language }) {
   const emotion = getEmotionMeta(item.emotion, language);
   const confidenceLabel = `${formatConfidence(item.confidence)} ${t("history.confidenceSuffix")}`;
+  const confidencePercent = getConfidencePercent(item.confidence);
   return (
     <motion.button
       type="button"
@@ -213,40 +220,46 @@ function HistoryTimelineItem({ item, index, onSelect, t, language }) {
       exit={{ opacity: 0, y: -10 }}
       transition={{ delay: index * 0.035 }}
       onClick={onSelect}
-      className="premium-card premium-card-hover relative w-full p-0 text-left"
+      className="premium-card premium-card-hover group relative w-full p-0 text-left"
     >
-      <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.35fr)_9rem_9rem_auto] lg:items-center">
-        <div className="flex min-w-0 items-center gap-4">
+      <div className="grid gap-3 p-3 sm:grid-cols-[auto_minmax(0,1fr)_12rem] sm:items-center sm:p-3.5">
+        <div className="flex items-center gap-3 sm:block">
           <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-base font-black"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-black"
             style={{ backgroundColor: `${emotion.accentColor}20`, color: emotion.accentColor }}
           >
             {emotion.label.slice(0, 1).toUpperCase()}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="font-black text-white">{emotion.label}</span>
-              <span className="rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: `${emotion.accentColor}18`, color: emotion.accentColor }}>
-                {getModalityLabel(item.modalityUsed, t)}
-              </span>
-              {item.faceDetected && <span className="rounded-full bg-cyan-200/10 px-2 py-0.5 text-xs font-bold text-cyan-100">{t("history.faceSignalBadge")}</span>}
-            </div>
-            <p className="line-clamp-1 text-sm text-slate-300">{item.userText || t("history.missingText")}</p>
+          <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-black text-slate-400 sm:mt-2 sm:block sm:text-center">
+            #{String(index + 1).padStart(2, "0")}
+          </span>
+        </div>
+
+        <div className="min-w-0">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <span className="font-black text-white">{emotion.label}</span>
+            <span className="rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: `${emotion.accentColor}18`, color: emotion.accentColor }}>
+              {getModalityLabel(item.modalityUsed, t)}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-xs font-bold text-slate-300">
+              {confidenceLabel}
+            </span>
+            {item.faceDetected && <span className="rounded-full bg-cyan-200/10 px-2 py-0.5 text-xs font-bold text-cyan-100">{t("history.faceSignalBadge")}</span>}
+          </div>
+          <p className="line-clamp-1 text-sm leading-6 text-slate-300">{item.userText || t("history.missingText")}</p>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <span className="block h-full rounded-full transition-all group-hover:opacity-90" style={{ width: `${confidencePercent}%`, backgroundColor: emotion.accentColor }} />
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 lg:text-center">
-          <p className="text-xs font-bold text-slate-500">{t("history.confidenceScore")}</p>
-          <p className="mt-1 text-sm font-black text-slate-200">{confidenceLabel}</p>
+        <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center">
+          <span className="text-xs font-bold text-slate-400 sm:text-right">
+            {formatDateTime(item.createdAt, language)}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-black text-slate-300">
+            {t("history.detail")}
+          </span>
         </div>
-
-        <div className="text-sm font-bold text-slate-400 lg:text-right">
-          {formatDateTime(item.createdAt, language)}
-        </div>
-
-        <span className="justify-self-start rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-sm font-black text-slate-300 lg:justify-self-end">
-          {t("history.detail")}
-        </span>
       </div>
     </motion.button>
   );
@@ -280,12 +293,12 @@ function HistoryDetailModal({ item, onClose, onAnalyze, t, language }) {
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 18, opacity: 0, scale: 0.98 }}
         onClick={(event) => event.stopPropagation()}
-        className="premium-card max-h-[calc(100svh-2rem)] w-full max-w-3xl overflow-y-auto p-4 sm:p-6"
+        className="premium-card max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-y-auto p-4 sm:p-5"
         role="dialog"
         aria-modal="true"
         aria-labelledby={modalTitleId}
       >
-        <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 p-4 sm:p-5" style={{ background: `linear-gradient(135deg, ${emotion.softAccent || `${emotion.accentColor}22`}, rgba(255,255,255,0.04))` }}>
+        <div className="relative overflow-hidden rounded-2xl border border-white/10 p-4" style={{ background: `linear-gradient(135deg, ${emotion.softAccent || `${emotion.accentColor}22`}, rgba(255,255,255,0.04))` }}>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div className="flex min-w-0 items-center gap-4">
               <div
@@ -296,7 +309,7 @@ function HistoryDetailModal({ item, onClose, onAnalyze, t, language }) {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">{t("history.miniResultPanel")}</p>
-                <h2 id={modalTitleId} className="mt-1 break-words text-3xl font-black text-white">
+                <h2 id={modalTitleId} className="mt-1 break-words text-2xl font-black text-white">
                   {emotion.label}
                 </h2>
                 <p className="text-sm text-slate-400">{formatDateTime(item.createdAt, language)}</p>
@@ -323,6 +336,7 @@ function HistoryDetailModal({ item, onClose, onAnalyze, t, language }) {
           {item.explanation && <InfoBlock label={t("history.systemExplanation")} value={item.explanation} />}
 
           <div className="grid gap-3 sm:grid-cols-2">
+            <InfoCard label={t("history.confidenceScore")} value={formatConfidence(item.confidence)} />
             <InfoCard label={t("history.model")} value={item.modelUsed || "gemini-multimodal"} />
             <InfoCard label={t("history.analysisType")} value={getModalityLabel(item.modalityUsed, t)} />
             <InfoCard label={t("history.responseTime")} value={item.responseTimeMs ? `${item.responseTimeMs} ms` : t("history.notAvailable")} />
@@ -345,7 +359,7 @@ function HistoryDetailModal({ item, onClose, onAnalyze, t, language }) {
 
 function InfoBlock({ label, value }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+    <div className="rounded-xl border border-white/10 bg-white/[0.06] p-3.5">
       <p className="mb-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p>
       <p className="text-sm leading-6 text-slate-200">{value}</p>
     </div>
@@ -354,7 +368,7 @@ function InfoBlock({ label, value }) {
 
 function InfoCard({ label, value }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-left sm:text-center">
+    <div className="rounded-xl border border-white/10 bg-white/[0.06] p-3 text-left sm:text-center">
       <p className="text-xs text-slate-400">{label}</p>
       <p className="mt-1 break-words text-sm font-bold text-white">{value}</p>
     </div>
@@ -382,8 +396,8 @@ function HistorySkeleton() {
 
 function HistoryEmptyState({ isFiltered, onReset, onAnalyze, t }) {
   return (
-    <div className="premium-card p-8 text-center">
-      <div className="empty-illustration mx-auto max-w-2xl p-6">
+    <div className="premium-card p-5 text-center">
+      <div className="empty-illustration mx-auto max-w-2xl p-4">
         <div>
           <span className="orb mx-auto h-16 w-16" aria-hidden="true">
             <span className="relative z-10 h-3 w-3 rounded-full bg-cyan-100" />
@@ -456,10 +470,10 @@ function buildHistorySummary(items, language = "tr") {
     }
   });
 
-  const [topEmotionKey] = [...emotionCounts.entries()].sort((left, right) => right[1] - left[1])[0] || ["unknown", 0];
+  const topEmotionEntry = [...emotionCounts.entries()].sort((left, right) => right[1] - left[1])[0];
   return {
     count,
-    topEmotion: getEmotionMeta(topEmotionKey, language),
+    topEmotion: topEmotionEntry ? getEmotionMeta(topEmotionEntry[0], language) : getEmotionMeta(null, language),
     multimodalCount,
     faceDetectedCount,
   };
@@ -471,13 +485,17 @@ function formatDateTime(value, language = "tr") {
 }
 
 function formatConfidence(value) {
+  return `${getConfidencePercent(value)}%`;
+}
+
+function getConfidencePercent(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "0%";
+    return 0;
   }
 
   const percent = numeric <= 1 ? numeric * 100 : numeric;
-  return `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
+  return Math.round(Math.max(0, Math.min(100, percent)));
 }
 
 function getModalityLabel(value, t) {

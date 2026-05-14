@@ -27,26 +27,32 @@ describe("Navbar", () => {
     expect(screen.getAllByRole("link", { name: /kayıt ol|create account/i }).length).toBeGreaterThan(0);
   });
 
-  it("closes the guest navbar on pointer leave, outside click, Escape, and nav actions", () => {
+  it("toggles the mobile navbar with an icon-only hamburger and closes on outside actions", () => {
     renderWithProviders(<Navbar />);
 
     const navbar = screen.getByRole("navigation", { name: /birincil|primary/i });
+    const openButton = screen.getByRole("button", { name: /menüyü aç|open menu/i });
 
-    fireEvent.pointerEnter(navbar);
-    expect(navbar).toHaveClass("is-open");
+    expect(openButton).toHaveTextContent("☰");
+    expect(openButton).not.toHaveTextContent(/menü|menu/i);
 
-    fireEvent.pointerLeave(navbar);
+    fireEvent.click(openButton);
+    expect(navbar).not.toHaveClass("is-open");
+    expect(screen.getByRole("button", { name: /menüyü kapat|close menu/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /menüyü kapat|close menu/i })).toHaveTextContent("✕");
+
+    fireEvent.click(screen.getByRole("button", { name: /menüyü kapat|close menu/i }));
     expect(navbar).not.toHaveClass("is-open");
 
-    fireEvent.pointerEnter(navbar);
+    fireEvent.click(openButton);
     fireEvent.pointerDown(document.body);
     expect(navbar).not.toHaveClass("is-open");
 
-    fireEvent.pointerEnter(navbar);
+    fireEvent.click(openButton);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(navbar).not.toHaveClass("is-open");
 
-    fireEvent.pointerEnter(navbar);
+    fireEvent.click(openButton);
     fireEvent.click(screen.getByLabelText(/ana sayfa|home page/i));
     expect(navbar).not.toHaveClass("is-open");
   });

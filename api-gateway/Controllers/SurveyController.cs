@@ -15,6 +15,13 @@ public class SurveyController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly AiServiceClient _aiClient;
+    private static readonly HashSet<string> AllowedAgeGroups = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "teen",
+        "young_adult",
+        "adult",
+        "mature"
+    };
 
     public SurveyController(AppDbContext db, AiServiceClient aiClient)
     {
@@ -41,6 +48,15 @@ public class SurveyController : ControllerBase
     public async Task<IActionResult> Submit([FromBody] PersonalitySurveySubmitRequest request)
     {
         var language = NormalizeLanguage(GetPreferredLanguage());
+        if (!TryNormalizeAgeGroup(request.AgeGroup, out var ageGroup))
+        {
+            return BadRequest(new
+            {
+                message = "Survey requires a valid age group.",
+                code = "INVALID_AGE_GROUP"
+            });
+        }
+
         var answers = request.Answers
             .Where(item => item.Key is >= 1 and <= 20 && item.Value is >= 1 and <= 5)
             .ToDictionary(item => item.Key, item => item.Value);
@@ -82,6 +98,7 @@ public class SurveyController : ControllerBase
 
         profile.BigFiveJson = BuildBigFiveJson(personality);
         profile.MbtiType = GetOptionalString(personality, "mbti");
+        profile.AgeGroup = ageGroup;
         profile.RawSurveyAnswers = JsonSerializer.Serialize(answers);
         profile.LastUpdated = now;
 
@@ -133,6 +150,12 @@ public class SurveyController : ControllerBase
     private static string NormalizeLanguage(string? language)
     {
         return (language ?? "").Trim().ToLowerInvariant().StartsWith("en") ? "en" : "tr";
+    }
+
+    private static bool TryNormalizeAgeGroup(string? value, out string ageGroup)
+    {
+        ageGroup = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return !string.IsNullOrWhiteSpace(ageGroup) && AllowedAgeGroups.Contains(ageGroup);
     }
 
     private Guid? GetUserId()

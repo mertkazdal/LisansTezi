@@ -1,14 +1,21 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
+
 namespace MoodLens.ApiGateway.Services;
 
 public class AdminAccessService
 {
     private readonly HashSet<string> _adminEmails;
     private readonly HashSet<string> _adminUsernames;
+    private readonly bool _allowDevelopmentFallback;
 
-    public AdminAccessService(IConfiguration configuration)
+    public AdminAccessService(IConfiguration configuration, IWebHostEnvironment environment)
     {
         _adminEmails = ParseList(configuration["ADMIN_EMAILS"]);
         _adminUsernames = ParseList(configuration["ADMIN_USERNAMES"]);
+        _allowDevelopmentFallback = _adminEmails.Count == 0 &&
+            _adminUsernames.Count == 0 &&
+            environment.IsDevelopment();
     }
 
     public bool IsAdmin(string? email, string? username)
@@ -20,7 +27,13 @@ public class AdminAccessService
         }
 
         var normalizedUsername = Normalize(username);
-        return !string.IsNullOrWhiteSpace(normalizedUsername) && _adminUsernames.Contains(normalizedUsername);
+        if (!string.IsNullOrWhiteSpace(normalizedUsername) && _adminUsernames.Contains(normalizedUsername))
+        {
+            return true;
+        }
+
+        return _allowDevelopmentFallback &&
+            (!string.IsNullOrWhiteSpace(normalizedEmail) || !string.IsNullOrWhiteSpace(normalizedUsername));
     }
 
     private static HashSet<string> ParseList(string? rawValue)

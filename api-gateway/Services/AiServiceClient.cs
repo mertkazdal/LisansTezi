@@ -32,7 +32,9 @@ public class AiServiceClient
         string? text,
         string? mimeType,
         string language,
-        string? analysisKeyEnv = null
+        string? analysisKeyEnv = null,
+        Guid? userId = null,
+        string? personalityJson = null
     )
     {
         return PostAsync("/analyze", new
@@ -41,7 +43,9 @@ public class AiServiceClient
             text,
             mime_type = mimeType,
             language,
-            analysis_key_env = analysisKeyEnv
+            analysis_key_env = analysisKeyEnv,
+            user_id = userId?.ToString(),
+            personality_json = personalityJson
         });
     }
 
@@ -49,7 +53,14 @@ public class AiServiceClient
         string emotion,
         string? context,
         string language,
-        bool preferFollowUpKey = false
+        bool preferFollowUpKey = false,
+        string? personalityJson = null,
+        string? ageGroup = null,
+        double? confidence = null,
+        string? analysisText = null,
+        Guid? userId = null,
+        IReadOnlyCollection<string>? surveyMovieGenres = null,
+        IReadOnlyCollection<int>? excludedMovieIds = null
     )
     {
         return PostAsync("/recommendations", new
@@ -57,7 +68,16 @@ public class AiServiceClient
             emotion,
             context,
             language,
-            prefer_followup_key = preferFollowUpKey
+            prefer_followup_key = preferFollowUpKey,
+            personality_json = personalityJson,
+            age_group = ageGroup,
+            confidence,
+            analysis_text = string.IsNullOrWhiteSpace(analysisText)
+                ? null
+                : analysisText.Trim()[..Math.Min(100, analysisText.Trim().Length)],
+            user_id = userId?.ToString(),
+            survey_movie_genres = surveyMovieGenres ?? Array.Empty<string>(),
+            excluded_movie_ids = excludedMovieIds ?? Array.Empty<int>()
         });
     }
 

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import NetworkStatusBadge from "./components/system/NetworkStatusBadge";
+import { userAPI } from "./services/api";
 import { useAuthStore } from "./store/authStore";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -19,22 +20,42 @@ const ProfilePage = lazy(() =>
 
 function App() {
   const hydrateToken = useAuthStore((state) => state.hydrateToken);
+  const updateUser = useAuthStore((state) => state.updateUser);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
   const location = useLocation();
   const isHomePoster = location.pathname === "/";
   const isGuestFlow = !isLoggedIn;
   const isRegisteredPanelFlow = isLoggedIn && isRegisteredPanelPath(location.pathname);
-  const usesRevealChrome = isGuestFlow || isRegisteredPanelFlow;
+  const isAuthenticatedHome = isLoggedIn && isHomePoster;
+  const usesRevealChrome = isGuestFlow || isRegisteredPanelFlow || isAuthenticatedHome;
 
   useEffect(() => {
     hydrateToken();
   }, [hydrateToken]);
 
+  useEffect(() => {
+    if (!isLoggedIn) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    userAPI.getProfile()
+      .then((profile) => {
+        if (!cancelled && profile) {
+          updateUser(profile);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, updateUser]);
+
   return (
     <div
-      className={`app-shell ${isHomePoster ? "is-home-poster" : ""} ${isGuestFlow ? "is-guest-flow" : ""} ${usesRevealChrome ? "is-reveal-chrome" : ""}`}
+      className={`app-shell ${isHomePoster ? "is-home-poster" : ""} ${isAuthenticatedHome ? "is-authenticated-home" : ""} ${isGuestFlow ? "is-guest-flow" : ""} ${usesRevealChrome ? "is-reveal-chrome" : ""}`}
     >
-      {usesRevealChrome && <div className="guest-navbar-hotspot" aria-hidden="true" />}
       <Navbar />
       <main className="app-content">
         <Suspense fallback={<RouteFallback />}>

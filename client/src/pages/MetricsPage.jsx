@@ -12,17 +12,16 @@ const KPI_ACCENTS = ["#38bdf8", "#2dd4bf", "#f59e0b", "#a78bfa", "#22c55e", "#fb
 
 export default function MetricsPage() {
   const { t, i18n } = useTranslation();
-  const { isLoggedIn, user } = useAuthStore();
+  const { isLoggedIn } = useAuthStore();
   const [dashboard, setDashboard] = useState(null);
   const [research, setResearch] = useState(null);
   const [responseTimes, setResponseTimes] = useState(null);
   const [distribution, setDistribution] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const isAdmin = Boolean(user?.isAdmin);
 
   useEffect(() => {
-    if (!isLoggedIn || !isAdmin) {
+    if (!isLoggedIn) {
       setLoading(false);
       return;
     }
@@ -70,7 +69,7 @@ export default function MetricsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, isLoggedIn, t]);
+  }, [isLoggedIn, t]);
 
   if (!isLoggedIn) {
     return (
@@ -81,21 +80,6 @@ export default function MetricsPage() {
           : "Sistem geneli araştırma metrikleri korumalıdır. Devam etmek için yönetici hesabıyla giriş yap."}
         primaryLabel={t("navigation.login")}
         primaryTo="/login"
-        secondaryLabel={t("navigation.home")}
-        secondaryTo="/"
-      />
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <MetricsAccessState
-        title={String(i18n.language || "tr").startsWith("en") ? "Admin access required" : "Yönetici erişimi gerekli"}
-        description={String(i18n.language || "tr").startsWith("en")
-          ? "These metrics summarize system-wide usage and are available only to admin accounts."
-          : "Bu metrikler sistem geneli kullanım özetini içerir ve yalnızca yönetici hesaplarına açıktır."}
-        primaryLabel={t("navigation.profile")}
-        primaryTo="/profile"
         secondaryLabel={t("navigation.home")}
         secondaryTo="/"
       />

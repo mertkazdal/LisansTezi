@@ -11,6 +11,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { isLoggedIn, user, logout } = useAuthStore();
   const navbarRef = useRef(null);
+  const toggleRef = useRef(null);
   const [isNavbarOpen, setIsNavbarOpen] = useState(false);
   const remaining = getGuestRemainingAnalyses();
   const guestLimit = getDefaultGuestLimit();
@@ -24,19 +25,6 @@ export default function Navbar() {
     { path: "/metrics", labelKey: "navigation.metrics", admin: true },
   ];
 
-  const bottomLinks = [
-    { path: "/", label: t("navigation.homeShort"), marker: "Ana" },
-    { path: "/analyze", label: t("navigation.analyze"), marker: "AI" },
-    user?.isAdmin
-      ? { path: "/metrics", label: t("navigation.metricsShort"), marker: "Met" }
-      : isLoggedIn
-        ? { path: "/history", label: t("navigation.history"), marker: "Geç" }
-        : { path: "/login", label: t("navigation.login"), marker: "Gir" },
-    isLoggedIn
-      ? { path: "/profile", label: t("navigation.profile"), marker: "Pro" }
-      : { path: "/register", label: t("navigation.register"), marker: "Kay" },
-  ];
-
   useEffect(() => {
     setIsNavbarOpen(false);
   }, [location.pathname]);
@@ -45,7 +33,10 @@ export default function Navbar() {
     if (!isNavbarOpen) return undefined;
 
     function handleDocumentPointerDown(event) {
-      if (!navbarRef.current?.contains(event.target)) {
+      if (
+        !navbarRef.current?.contains(event.target) &&
+        !toggleRef.current?.contains(event.target)
+      ) {
         setIsNavbarOpen(false);
       }
     }
@@ -69,12 +60,6 @@ export default function Navbar() {
     setIsNavbarOpen(false);
   }
 
-  function handleNavbarBlur(event) {
-    if (!event.currentTarget.contains(event.relatedTarget)) {
-      closeNavbar();
-    }
-  }
-
   function handleLogout() {
     closeNavbar();
     logout();
@@ -84,26 +69,23 @@ export default function Navbar() {
   return (
     <>
       <nav
+        id="primary-navbar"
         ref={navbarRef}
         aria-label={t("navigation.primary")}
-        className={`navbar-shell sticky top-0 z-50 ${isNavbarOpen ? "is-open" : ""}`}
-        onPointerEnter={() => setIsNavbarOpen(true)}
-        onPointerLeave={closeNavbar}
-        onFocus={() => setIsNavbarOpen(true)}
-        onBlur={handleNavbarBlur}
+        className="navbar-shell sticky top-0 z-50"
       >
-        <div className="mx-auto flex min-h-[4.35rem] max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[4.35rem] max-w-7xl flex-wrap items-center justify-between gap-3 px-4 sm:px-6 md:flex-nowrap lg:px-8">
           <Link to="/" className="group flex min-w-0 items-center gap-3 rounded-2xl focus-ring" aria-label={t("navigation.homeAria")} onClick={closeNavbar}>
             <span className="brand-orb shrink-0" aria-hidden="true">YK</span>
             <span className="min-w-0 leading-tight">
               <span className="navbar-brand-title block truncate text-base font-black tracking-tight sm:text-lg">{t("common.shortProductName")}</span>
-              <span className="navbar-brand-tagline hidden text-[10px] font-bold uppercase tracking-[0.22em] lg:block">
+              <span className="navbar-brand-tagline hidden text-[10px] font-bold uppercase tracking-[0.22em] md:block">
                 {t("common.tagline")}
               </span>
             </span>
           </Link>
 
-          <div className="navbar-links hidden items-center gap-1 rounded-full border p-1 lg:flex">
+          <div className="navbar-links hidden min-w-0 flex-1 items-center justify-center gap-1 rounded-full border p-1 md:flex">
             {desktopLinks.map(({ path, labelKey, auth, admin }) => {
               if (auth && !isLoggedIn) return null;
               if (admin && !user?.isAdmin) return null;
@@ -132,7 +114,7 @@ export default function Navbar() {
             })}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center justify-end gap-2 md:flex">
             {!isLoggedIn && (
               <>
                 <GuestQuotaPill label={t("common.guestQuota")} remaining={remaining} progress={progress} />
@@ -148,59 +130,106 @@ export default function Navbar() {
                     closeNavbar();
                     navigate("/profile");
                   }}
-                  className="btn-ghost hidden max-w-[10rem] truncate lg:inline-flex"
+                  className="btn-ghost max-w-[10rem] truncate"
                   aria-label={t("common.openProfile")}
                 >
                   {user?.username || t("navigation.profile")}
                 </button>
-                <button type="button" onClick={handleLogout} className="btn-secondary hidden !min-h-0 !px-4 !py-2 lg:inline-flex">
+                <button type="button" onClick={handleLogout} className="btn-secondary !min-h-0 !px-4 !py-2">
                   {t("navigation.logout")}
                 </button>
               </>
             ) : (
               <>
-                <Link to="/login" className="btn-ghost hidden lg:inline-flex" onClick={closeNavbar}>
+                <Link to="/login" className="btn-ghost" onClick={closeNavbar}>
                   {t("navigation.login")}
                 </Link>
-                <Link to="/register" className="btn-primary hidden !min-h-0 !px-4 !py-2 lg:inline-flex" onClick={closeNavbar}>
+                <Link to="/register" className="btn-primary !min-h-0 !px-4 !py-2" onClick={closeNavbar}>
                   {t("navigation.register")}
                 </Link>
               </>
             )}
           </div>
-        </div>
-      </nav>
 
-      <nav
-        aria-label={t("navigation.mobile")}
-        className="mobile-navbar-shell fixed inset-x-0 z-50 px-3 md:hidden"
-        style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.7rem)" }}
-      >
-        <div className="mobile-navbar-panel mx-auto grid max-w-md grid-cols-4 gap-1 rounded-[1.35rem] border p-1.5 backdrop-blur-2xl">
-          {bottomLinks.map(({ path, label, marker }) => {
-            const isActive = isRouteActive(location.pathname, path);
-            return (
-              <Link
-                key={path}
-                to={path}
-                className={`mobile-navbar-link focus-ring relative flex min-h-14 flex-col items-center justify-center rounded-2xl text-[11px] font-bold transition ${
-                  isActive ? "is-active" : ""
-                }`}
-                aria-current={isActive ? "page" : undefined}
-                onClick={closeNavbar}
-              >
-                {isActive && (
-                  <motion.span
-                    layoutId="mobile-navbar-indicator"
-                    className="mobile-navbar-indicator absolute inset-0 rounded-2xl"
-                    transition={{ type: "spring", stiffness: 420, damping: 36 }}
-                  />
+          <button
+            ref={toggleRef}
+            type="button"
+            className="navbar-inline-close focus-ring ml-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-xl font-black md:hidden"
+            aria-controls="mobile-navbar-menu"
+            aria-expanded={isNavbarOpen}
+            aria-label={isNavbarOpen ? t("navigation.closeMenu") : t("navigation.openMenu")}
+            onClick={() => setIsNavbarOpen((value) => !value)}
+          >
+            <span aria-hidden="true">{isNavbarOpen ? "✕" : "☰"}</span>
+          </button>
+
+          {isNavbarOpen && (
+            <div
+              id="mobile-navbar-menu"
+              className="mobile-navbar-panel navbar-links basis-full rounded-[1.35rem] border p-1.5 backdrop-blur-2xl md:hidden"
+            >
+              <div className="grid gap-1">
+                {desktopLinks.map(({ path, labelKey, auth, admin }) => {
+                  if (auth && !isLoggedIn) return null;
+                  if (admin && !user?.isAdmin) return null;
+
+                  const isActive = isRouteActive(location.pathname, path);
+                  return (
+                    <Link
+                      key={path}
+                      to={path}
+                      className={`mobile-navbar-link focus-ring relative flex min-h-12 items-center justify-center rounded-2xl text-sm font-bold transition ${
+                        isActive ? "is-active" : ""
+                      }`}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={closeNavbar}
+                    >
+                      {isActive && (
+                        <motion.span
+                          layoutId="mobile-navbar-indicator"
+                          className="mobile-navbar-indicator absolute inset-0 rounded-2xl"
+                          transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                        />
+                      )}
+                      <span className="relative z-10">{t(labelKey)}</span>
+                    </Link>
+                  );
+                })}
+
+                {isLoggedIn ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeNavbar();
+                        navigate("/profile");
+                      }}
+                      className="mobile-navbar-link focus-ring relative flex min-h-12 items-center justify-center rounded-2xl text-sm font-bold transition"
+                      aria-label={t("common.openProfile")}
+                    >
+                      <span className="relative z-10">{user?.username || t("navigation.profile")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="mobile-navbar-link focus-ring relative flex min-h-12 items-center justify-center rounded-2xl text-sm font-bold transition"
+                    >
+                      <span className="relative z-10">{t("navigation.logout")}</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/login" className="mobile-navbar-link focus-ring relative flex min-h-12 items-center justify-center rounded-2xl text-sm font-bold transition" onClick={closeNavbar}>
+                      <span className="relative z-10">{t("navigation.login")}</span>
+                    </Link>
+                    <Link to="/register" className="mobile-navbar-link focus-ring relative flex min-h-12 items-center justify-center rounded-2xl text-sm font-bold transition" onClick={closeNavbar}>
+                      <span className="relative z-10">{t("navigation.register")}</span>
+                    </Link>
+                  </>
                 )}
-                <span className="mobile-navbar-marker relative z-10 text-[10px] uppercase tracking-[0.14em]">{marker}</span>
-                <span className="relative z-10 mt-0.5">{label}</span>
-              </Link>
-            );
-          })}
+              </div>
+            </div>
+          )}
         </div>
       </nav>
     </>

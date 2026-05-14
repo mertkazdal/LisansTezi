@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -19,7 +20,7 @@ from services.image_validation_service import ImageValidationError, validate_ima
 from services.personality_service import detect_personality, load_survey_questions
 from services.personality_update_service import update_personality_from_behavior
 from services.spotify_service import get_music_recommendations
-from services.tmdb_service import get_movie_recommendations
+from services.tmdb_service import MovieRecommendationProviderError, get_movie_recommendations
 
 app = FastAPI(
     title="Yaşam Koçu AI Service",
@@ -42,6 +43,8 @@ class AnalyzeRequest(BaseModel):
     mime_type: Optional[str] = "image/jpeg"
     language: Optional[str] = "en"
     analysis_key_env: Optional[str] = None
+    user_id: Optional[str] = None
+    personality_json: Optional[str] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -66,6 +69,13 @@ class RecommendationsRequest(BaseModel):
     context: Optional[str] = None
     language: Optional[str] = "en"
     prefer_followup_key: Optional[bool] = False
+    personality_json: Optional[str] = None
+    age_group: Optional[str] = None
+    confidence: Optional[float] = None
+    analysis_text: Optional[str] = None
+    user_id: Optional[str] = None
+    survey_movie_genres: Optional[list[str]] = None
+    excluded_movie_ids: Optional[list[int]] = None
 
 
 class RecommendationsResponse(BaseModel):
@@ -198,6 +208,8 @@ async def analyze(request: AnalyzeRequest):
                 request.mime_type,
                 request.language or "en",
                 request.analysis_key_env,
+                request.personality_json,
+                request.user_id,
             )
         except GeminiServiceError as exc:
             return JSONResponse(
@@ -246,19 +258,32 @@ async def recommendations(request: RecommendationsRequest):
 
     context = request.context or ""
     language = request.language or "en"
+    analysis_excerpt = (request.analysis_text or "").strip()[:100]
+    enriched_context_parts = [context]
+    if request.confidence is not None:
+        enriched_context_parts.append(f"emotion confidence: {request.confidence:.2f}")
+    if request.age_group:
+        enriched_context_parts.append(f"age group: {request.age_group}")
+    if analysis_excerpt:
+        enriched_context_parts.append(f"analysis excerpt: {analysis_excerpt}")
+    enriched_context = "\n".join(part for part in enriched_context_parts if part.strip())
 
     if is_demo_mode():
         demo_bundle = get_demo_recommendations(emotion, language)
         coach_comment = build_demo_coach_comment(emotion, context, language)
+        music = _limit_and_pad(demo_bundle["music"], demo_bundle["music"])
+        movies = _limit_and_pad(demo_bundle["movies"], demo_bundle["movies"])
+        books = _limit_and_pad(demo_bundle["books"], demo_bundle["books"])
+        advice = _limit_and_pad(demo_bundle["lifeAdvice"], demo_bundle["lifeAdvice"])
         return RecommendationsResponse(
             coachComment=coach_comment,
             coach_advice=coach_comment,
-            music=demo_bundle["music"],
-            movies=demo_bundle["movies"],
-            films=demo_bundle["movies"],
-            books=demo_bundle["books"],
-            lifeAdvice=demo_bundle["lifeAdvice"],
-            activities=demo_bundle["lifeAdvice"],
+            music=music,
+            movies=movies,
+            films=movies,
+            books=books,
+            lifeAdvice=advice,
+            activities=advice,
             status="complete",
             missing_recommendations=[],
         )
@@ -267,9 +292,10 @@ async def recommendations(request: RecommendationsRequest):
     try:
         followup_bundle = await generate_followup_bundle(
             emotion,
-            context,
+            enriched_context,
             language,
             request.prefer_followup_key or False,
+            request.personality_json,
         )
     except Exception as exc:
         print(f"Follow-up bundle error: {exc}")
@@ -282,9 +308,19 @@ async def recommendations(request: RecommendationsRequest):
 
     query_bundle = followup_bundle.get("queries") if isinstance(followup_bundle, dict) else {}
     query_bundle = query_bundle if isinstance(query_bundle, dict) else {}
-    music_task = get_music_recommendations(emotion, context, query_bundle.get("music_queries"))
-    movies_task = get_movie_recommendations(emotion, context, language, query_bundle.get("film_queries"))
-    books_task = get_book_recommendations(emotion, context, language, query_bundle.get("book_queries"))
+    music_task = get_music_recommendations(emotion, enriched_context, query_bundle.get("music_queries"))
+    movies_task = get_movie_recommendations(
+        emotion,
+        enriched_context,
+        language,
+        None,
+        request.age_group,
+        request.survey_movie_genres or [],
+        request.user_id,
+        request.excluded_movie_ids or [],
+        analysis_excerpt,
+    )
+    books_task = get_book_recommendations(emotion, enriched_context, language, query_bundle.get("book_queries"))
 
     music, movies, books = await asyncio.gather(
         music_task,
@@ -299,7 +335,11 @@ async def recommendations(request: RecommendationsRequest):
         print(f"Music recommendation error: {music}")
         missing_recommendations.append("music")
         music = []
-    if isinstance(movies, Exception):
+    if isinstance(movies, MovieRecommendationProviderError):
+        print(f"Movie recommendation provider error: {movies}")
+        missing_recommendations.append("films")
+        movies = movies.fallback_movies
+    elif isinstance(movies, Exception):
         print(f"Movie recommendation error: {movies}")
         missing_recommendations.append("films")
         movies = []
@@ -324,6 +364,10 @@ async def recommendations(request: RecommendationsRequest):
 
     coach_comment = followup_bundle.get("coach_comment") or build_demo_coach_comment(emotion, context, language)
     advice = followup_bundle.get("advice") or demo_bundle["lifeAdvice"]
+    music = _limit_and_pad(music, demo_bundle["music"])
+    movies = _limit_and_pad(movies, demo_bundle["movies"])
+    books = _limit_and_pad(books, demo_bundle["books"])
+    advice = _limit_and_pad(advice, demo_bundle["lifeAdvice"])
 
     partial_error = None
     if missing_recommendations:
@@ -344,6 +388,27 @@ async def recommendations(request: RecommendationsRequest):
         partial_error=partial_error,
         missing_recommendations=missing_recommendations,
     )
+
+
+def _dedupe_key(item):
+    if isinstance(item, dict):
+        return item.get("tmdb_id") or item.get("title") or item.get("name") or item.get("spotify_url") or json.dumps(item, sort_keys=True, default=str)
+    return str(item)
+
+
+def _limit_and_pad(items: list | None, fallback: list | None, limit: int = 3) -> list:
+    result = []
+    seen = set()
+    for source in (items or []), (fallback or []):
+        for item in source:
+            key = _dedupe_key(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+            if len(result) >= limit:
+                return result[:limit]
+    return result[:limit]
 
 
 def build_demo_coach_comment(emotion: str, context: str | None, language: str) -> str:

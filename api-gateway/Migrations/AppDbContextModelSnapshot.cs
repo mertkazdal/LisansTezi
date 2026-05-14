@@ -520,6 +520,11 @@ namespace MoodLens.ApiGateway.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
+                    b.Property<string>("AgeGroup")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("age_group");
+
                     b.Property<DateTime?>("AvatarGeneratedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("avatar_generated_at");

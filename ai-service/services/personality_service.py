@@ -12,6 +12,7 @@ from services.gemini_key_manager import GeminiKeyError, GeminiPipelineLease, gem
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 SURVEY_PATH = DATA_DIR / "survey_questions.json"
 DIMENSIONS = ("openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism")
+AGE_GROUP_VALUES = {"teen", "young_adult", "adult", "mature"}
 
 
 def load_survey_questions(language: str = "tr") -> dict[str, Any]:
@@ -28,16 +29,32 @@ def load_survey_questions(language: str = "tr") -> dict[str, Any]:
             "max": payload.get("scale", {}).get("max", 5),
             "labels": payload.get("scale", {}).get(labels_key, {}),
         },
-        "questions": [
-            {
-                "id": item["id"],
-                "dimension": item["dimension"],
-                "text": item.get(text_key) or item.get("text_en") or item.get("text_tr"),
-                "reverse": bool(item.get("reverse", False)),
-            }
-            for item in payload.get("questions", [])
-        ],
+        "questions": [_localize_question(item, text_key, normalized_language) for item in payload.get("questions", [])],
     }
+
+
+def _localize_question(item: dict[str, Any], text_key: str, language: str) -> dict[str, Any]:
+    question = {
+        "id": item["id"],
+        "type": item.get("type", "likert"),
+        "text": item.get(text_key) or item.get("text_en") or item.get("text_tr"),
+        "required": bool(item.get("required", False)),
+    }
+
+    if question["type"] == "age_group":
+        label_key = f"label_{language}"
+        question["options"] = [
+            {
+                "value": option.get("value"),
+                "label": option.get(label_key) or option.get("label_en") or option.get("label_tr"),
+            }
+            for option in item.get("options", [])
+        ]
+        return question
+
+    question["dimension"] = item["dimension"]
+    question["reverse"] = bool(item.get("reverse", False))
+    return question
 
 
 def detect_personality(
@@ -87,6 +104,9 @@ def _answers_to_text(survey_answers: dict[str, Any], language: str) -> str:
     lines = []
 
     for question in questions:
+        if question.get("type") == "age_group":
+            continue
+
         answer = answer_map.get(question["id"])
         if answer is None:
             continue
@@ -104,6 +124,9 @@ def _score_locally(survey_answers: dict[str, Any]) -> dict[str, Any]:
     buckets = {dimension: [] for dimension in DIMENSIONS}
 
     for question in questions:
+        if question.get("type") == "age_group":
+            continue
+
         raw = answer_map.get(question["id"])
         if raw is None:
             continue
