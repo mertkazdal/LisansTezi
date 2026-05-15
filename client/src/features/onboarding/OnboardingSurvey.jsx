@@ -155,6 +155,10 @@ export function getStoredOnboardingDraft() {
   }
 }
 
+export function hasStoredOnboardingDraft() {
+  return Boolean(getStoredOnboardingDraft());
+}
+
 export function mapOnboardingProfileToRecommendationSurvey(userProfile) {
   const musicGenres = mapSelectedOptions(userProfile?.music, [
     ["acoustic", ["akustik", "acoustic"]],
@@ -261,7 +265,9 @@ export default function OnboardingSurvey({ onSurveyComplete, onClose, initialPro
   }
 
   function closeSurvey() {
-    if (!showResumeChoice && hasDraftProgress(screen, answers)) {
+    if (!showResumeChoice && hasCompleteSurveyAnswers(answers)) {
+      persistCompletedSurvey(answers);
+    } else if (!showResumeChoice && hasDraftProgress(screen, answers)) {
       saveOnboardingDraft({ screen, answers });
     }
 
@@ -269,23 +275,7 @@ export default function OnboardingSurvey({ onSurveyComplete, onClose, initialPro
   }
 
   function completeSurvey() {
-    const userProfile = {
-      music: answers.music,
-      movies: answers.movies,
-      books: answers.books,
-      peakTime: answers.peakTime,
-      socialEnergy: answers.socialEnergy,
-      stressCoping: answers.stressCoping,
-      philosophy: answers.philosophy,
-      completedAt: new Date().toISOString(),
-    };
-    const recommendationSurvey = mapOnboardingProfileToRecommendationSurvey(userProfile);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
-      window.sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ userProfile, recommendationSurvey }));
-    }
-
+    const { userProfile, recommendationSurvey } = persistCompletedSurvey(answers);
     onSurveyComplete?.(userProfile, recommendationSurvey);
   }
 
@@ -584,6 +574,28 @@ function saveOnboardingDraft({ screen, answers }) {
   window.sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ [ONBOARDING_DRAFT_KEY]: draft }));
 }
 
+function persistCompletedSurvey(answers) {
+  const normalizedAnswers = normalizeDraftAnswers(answers);
+  const userProfile = {
+    music: normalizedAnswers.music,
+    movies: normalizedAnswers.movies,
+    books: normalizedAnswers.books,
+    peakTime: normalizedAnswers.peakTime,
+    socialEnergy: normalizedAnswers.socialEnergy,
+    stressCoping: normalizedAnswers.stressCoping,
+    philosophy: normalizedAnswers.philosophy,
+    completedAt: new Date().toISOString(),
+  };
+  const recommendationSurvey = mapOnboardingProfileToRecommendationSurvey(userProfile);
+
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    window.sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ userProfile, recommendationSurvey }));
+  }
+
+  return { userProfile, recommendationSurvey };
+}
+
 function clearStoredOnboardingDraft() {
   if (typeof window === "undefined") {
     return;
@@ -632,6 +644,12 @@ function hasDraftProgress(screen, answers) {
   return screen > 0 || Object.values(normalizeDraftAnswers(answers)).some((value) =>
     Array.isArray(value) ? value.length > 0 : Boolean(value),
   );
+}
+
+function hasCompleteSurveyAnswers(answers) {
+  return SCREENS
+    .filter((screen) => screen.key)
+    .every((screen) => canGoNext(screen, normalizeDraftAnswers(answers)));
 }
 
 function clampDraftScreen(screen) {

@@ -19,6 +19,7 @@ public class HistoryController : ControllerBase
     private const int DefaultPage = 1;
     private const int DefaultPageSize = 20;
     private const int MaxPageSize = 100;
+    private static readonly TimeSpan ShareTokenLifetime = TimeSpan.FromDays(7);
 
     private readonly AppDbContext _db;
 
@@ -170,18 +171,39 @@ public class HistoryController : ControllerBase
         var record = await FindOwnedRecordOrCreateFromHistoryAsync(id, userId.Value);
         if (record == null) return NotFound(new { message = "History item not found." });
 
-        if (string.IsNullOrWhiteSpace(record.ShareToken))
+        if (string.IsNullOrWhiteSpace(record.ShareToken) ||
+            record.ShareTokenExpiresAt is null ||
+            record.ShareTokenExpiresAt <= DateTime.UtcNow)
         {
             record.ShareToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
-            await _db.SaveChangesAsync();
         }
+
+        record.ShareTokenExpiresAt = DateTime.UtcNow.Add(ShareTokenLifetime);
+        await _db.SaveChangesAsync();
 
         var link = $"{Request.Scheme}://{Request.Host}/api/history/shared/{record.ShareToken}";
         return Ok(new
         {
             shareToken = record.ShareToken,
-            url = link
+            url = link,
+            expiresAt = record.ShareTokenExpiresAt
         });
+    }
+
+    [HttpDelete("{id}/share")]
+    public async Task<IActionResult> RevokeShare(Guid id)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var record = await FindOwnedRecordOrCreateFromHistoryAsync(id, userId.Value);
+        if (record == null) return NotFound(new { message = "History item not found." });
+
+        record.ShareToken = null;
+        record.ShareTokenExpiresAt = null;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { revoked = true });
     }
 
     [HttpGet("shared/{token}")]
@@ -195,7 +217,10 @@ public class HistoryController : ControllerBase
 
         var record = await _db.AnalysisRecords
             .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.ShareToken == token.Trim());
+            .FirstOrDefaultAsync(item =>
+                item.ShareToken == token.Trim() &&
+                item.ShareTokenExpiresAt != null &&
+                item.ShareTokenExpiresAt > DateTime.UtcNow);
 
         return record == null
             ? NotFound(new { message = "Shared analysis not found." })
@@ -206,6 +231,14 @@ public class HistoryController : ControllerBase
     {
         var record = await _db.AnalysisRecords
             .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+
+        if (record != null)
+        {
+            return record;
+        }
+
+        record = await _db.AnalysisRecords
+            .FirstOrDefaultAsync(item => item.EmotionHistoryId == id && item.UserId == userId);
 
         if (record != null)
         {
@@ -223,6 +256,7 @@ public class HistoryController : ControllerBase
 
         record = new AnalysisRecord
         {
+            EmotionHistoryId = history.Id,
             UserId = userId,
             InputType = NormalizeInputType(history.ModalityUsed),
             EmotionResult = history.DetectedEmotion,
@@ -416,11 +450,10 @@ public class HistoryController : ControllerBase
     private static byte[] BuildSimplePdf(IEnumerable<string> lines)
     {
         var content = new StringBuilder("BT\n/F1 12 Tf\n50 780 Td\n");
-        foreach (var line in lines.Take(32))
+        foreach (var line in lines.SelectMany(WrapReportLine).Take(34))
         {
-            content.Append('(')
-                .Append(EscapePdfText(line))
-                .Append(") Tj\n0 -18 Td\n");
+            content.Append(PdfUnicodeHexString(line))
+                .Append(" Tj\n0 -18 Td\n");
         }
         content.Append("ET");
 
@@ -454,10 +487,38 @@ public class HistoryController : ControllerBase
         return Encoding.ASCII.GetBytes(pdf.ToString());
     }
 
-    private static string EscapePdfText(string value)
+    private static IEnumerable<string> WrapReportLine(string value)
     {
-        var ascii = new string(value.Select(ch => ch is >= ' ' and <= '~' ? ch : '?').ToArray());
-        return ascii.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+        const int maxChars = 86;
+        var remaining = value.Trim();
+        if (remaining.Length <= maxChars)
+        {
+            yield return remaining;
+            yield break;
+        }
+
+        while (remaining.Length > maxChars)
+        {
+            var splitIndex = remaining.LastIndexOf(' ', maxChars);
+            if (splitIndex < 24)
+            {
+                splitIndex = maxChars;
+            }
+
+            yield return remaining[..splitIndex].TrimEnd();
+            remaining = remaining[splitIndex..].TrimStart();
+        }
+
+        if (!string.IsNullOrWhiteSpace(remaining))
+        {
+            yield return remaining;
+        }
+    }
+
+    private static string PdfUnicodeHexString(string value)
+    {
+        var bytes = Encoding.BigEndianUnicode.GetBytes(value);
+        return $"<FEFF{Convert.ToHexString(bytes)}>";
     }
 
     private Guid? GetUserId()

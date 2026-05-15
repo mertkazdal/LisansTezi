@@ -35,6 +35,8 @@ const USER_FRIENDLY_ANALYZE_ERROR_MESSAGES_TR = {
   MISSING_INPUT: "Analize başlamak için metin, selfie ya da ikisinden birini ekle.",
   MISSING_CONSENT: "Selfie kullanmadan önce mahremiyet onayını işaretle.",
   INVALID_TEXT_LENGTH: "Metin 10 ile 1000 karakter arasında olmalı.",
+  ANALYSIS_TEXT_VALIDATION_WARNING: "Metin duygu analizi için yeterince anlamlı görünmüyor. Ne yaşadığını ya da nasıl hissettiğini birkaç net cümleyle yaz.",
+  ANALYSIS_TEXT_VALIDATION_COOLDOWN: "Metin arka arkaya net bulunmadı. 1 dakika sonra daha açıklayıcı bir metinle tekrar deneyebilirsin.",
   AGE_REQUIRED: "Analize başlamadan önce yaşını girmen gerekiyor. Önerileri yaşına uygun hazırlayacağız.",
   INVALID_AGE: "Yaş 13 ile 120 arasında olmalı.",
   SURVEY_REQUIRED: "Analize başlamadan önce kısa bir anket doldurman gerekiyor. Bu anket sana özel sonuçlar üretmemizi sağlıyor.",

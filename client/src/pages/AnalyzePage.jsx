@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { OnboardingSurvey, getStoredRecommendationSurvey } from "../features/onboarding";
+import { OnboardingSurvey, getStoredRecommendationSurvey, hasStoredOnboardingDraft } from "../features/onboarding";
 import { emotionAPI, guestSessionAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
@@ -27,6 +27,8 @@ const ANALYSIS_LOADING_STEPS = [
   "Neredeyse bitti...",
 ];
 
+const ONBOARDING_ENTRY_DISMISSED_KEY = "life-coach-onboarding-entry-dismissed";
+
 const AGE_GROUP_OPTIONS = [
   { value: "teen", label: "13-17", numericAge: 15 },
   { value: "young_adult", label: "18-24", numericAge: 21 },
@@ -46,6 +48,8 @@ const FRIENDLY_ANALYZE_MESSAGES_TR = {
   conflict:
     "Görsel ve metin analizin birbiriyle çelişiyor. Fotoğrafın ve yazdıkların farklı duygular yansıtıyor olabilir. Analiz en olası sonucu sana sunmaya çalışıyor.",
   conflictCooldown: "Analizin tutarsız sinyaller içeriyor. 1 dakika sonra tekrar deneyebilirsin.",
+  textValidation: "Metin duygu analizi için yeterince anlamlı görünmüyor. Ne yaşadığını ya da nasıl hissettiğini birkaç net cümleyle yaz.",
+  textValidationCooldown: "Metin arka arkaya net bulunmadı. 1 dakika sonra daha açıklayıcı bir metinle tekrar deneyebilirsin.",
 };
 
 const ANALYZE_ERROR_MESSAGE_BY_CODE = {
@@ -74,6 +78,8 @@ const ANALYZE_ERROR_MESSAGE_BY_CODE = {
   GUEST_QUOTA_EXCEEDED: FRIENDLY_ANALYZE_MESSAGES_TR.guestQuota,
   ANALYSIS_RETRY_COOLDOWN: FRIENDLY_ANALYZE_MESSAGES_TR.conflictCooldown,
   ANALYSIS_COOLDOWN_ACTIVE: FRIENDLY_ANALYZE_MESSAGES_TR.conflictCooldown,
+  ANALYSIS_TEXT_VALIDATION_WARNING: FRIENDLY_ANALYZE_MESSAGES_TR.textValidation,
+  ANALYSIS_TEXT_VALIDATION_COOLDOWN: FRIENDLY_ANALYZE_MESSAGES_TR.textValidationCooldown,
 };
 
 const IMAGE_ALERT_CODES = new Set([
@@ -92,6 +98,7 @@ const INPUT_ALERT_CODES = new Set([
   "MISSING_INPUT",
   "ANALYSIS_INPUT_REQUIRED",
   "INVALID_TEXT_LENGTH",
+  "ANALYSIS_TEXT_VALIDATION_WARNING",
 ]);
 
 const CONSENT_ALERT_CODES = new Set(["MISSING_CONSENT"]);
@@ -254,7 +261,10 @@ function buildAnalyzeAlertPayload({ code, message, title, hint, tone, copy }) {
   const isQuotaError = normalizedCode === "GUEST_QUOTA_EXCEEDED";
   const isSurveyError = normalizedCode === "SURVEY_REQUIRED" || normalizedCode === "survey_required";
   const isAgeError = normalizedCode === "AGE_REQUIRED" || normalizedCode === "INVALID_AGE";
-  const isCooldownError = normalizedCode === "ANALYSIS_RETRY_COOLDOWN" || normalizedCode === "ANALYSIS_COOLDOWN_ACTIVE";
+  const isCooldownError =
+    normalizedCode === "ANALYSIS_RETRY_COOLDOWN" ||
+    normalizedCode === "ANALYSIS_COOLDOWN_ACTIVE" ||
+    normalizedCode === "ANALYSIS_TEXT_VALIDATION_COOLDOWN";
   const isInputError = INPUT_ALERT_CODES.has(normalizedCode);
   const isConsentError = CONSENT_ALERT_CODES.has(normalizedCode);
 
@@ -406,7 +416,10 @@ export default function AnalyzePage() {
 
     promptedSurveyOnEntryRef.current = true;
     if (!getStoredRecommendationSurvey()) {
-      setShowOnboardingSurvey(true);
+      const dismissedThisSession = window.sessionStorage.getItem(ONBOARDING_ENTRY_DISMISSED_KEY) === "true";
+      if (hasStoredOnboardingDraft() || !dismissedThisSession) {
+        setShowOnboardingSurvey(true);
+      }
     }
   }, [isLoggedIn]);
 
@@ -699,6 +712,7 @@ export default function AnalyzePage() {
     const guestRecommendationSurvey = isLoggedIn ? null : getStoredRecommendationSurvey();
     if (!isLoggedIn && !guestRecommendationSurvey) {
       resumeAnalyzeAfterSurveyRef.current = true;
+      window.sessionStorage.removeItem(ONBOARDING_ENTRY_DISMISSED_KEY);
       setShowOnboardingSurvey(true);
       raiseAnalysisAlert(buildAnalyzeAlertPayload({
         code: "survey_required",
@@ -770,14 +784,33 @@ export default function AnalyzePage() {
         return;
       }
 
-      if (requestError.code === "ANALYSIS_RETRY_COOLDOWN" || requestError.code === "ANALYSIS_COOLDOWN_ACTIVE") {
+      if (requestError.code === "ANALYSIS_TEXT_VALIDATION_WARNING") {
+        raiseAnalysisAlert(buildAnalyzeAlertPayload({
+          code: requestError.code,
+          message: requestError.message,
+          title: requestError.details?.alertTitle,
+          hint: requestError.details?.alertHint,
+          tone: "warning",
+          copy,
+        }));
+        return;
+      }
+
+      if (
+        requestError.code === "ANALYSIS_RETRY_COOLDOWN" ||
+        requestError.code === "ANALYSIS_COOLDOWN_ACTIVE" ||
+        requestError.code === "ANALYSIS_TEXT_VALIDATION_COOLDOWN"
+      ) {
         const retryAfter = Math.max(1, Number(requestError.retryAfterSeconds) || 60);
+        const cooldownMessage = requestError.code === "ANALYSIS_TEXT_VALIDATION_COOLDOWN"
+          ? requestError.message || FRIENDLY_ANALYZE_MESSAGES_TR.textValidationCooldown
+          : FRIENDLY_ANALYZE_MESSAGES_TR.conflictCooldown;
         guestSessionAPI.setAnalysisCooldown(retryAfter);
         setCooldownRemaining(retryAfter);
         clearAnalyzeAlerts();
         raiseAnalysisAlert(buildAnalyzeAlertPayload({
           code: requestError.code,
-          message: FRIENDLY_ANALYZE_MESSAGES_TR.conflictCooldown,
+          message: cooldownMessage,
           copy,
         }));
         return;
@@ -859,8 +892,12 @@ export default function AnalyzePage() {
           onClose={() => {
             resumeAnalyzeAfterSurveyRef.current = false;
             setShowOnboardingSurvey(false);
+            if (!getStoredRecommendationSurvey() && !hasStoredOnboardingDraft()) {
+              window.sessionStorage.setItem(ONBOARDING_ENTRY_DISMISSED_KEY, "true");
+            }
           }}
           onSurveyComplete={(userProfile) => {
+            window.sessionStorage.removeItem(ONBOARDING_ENTRY_DISMISSED_KEY);
             window.dispatchEvent(new CustomEvent("life-coach:onboarding-complete", { detail: userProfile }));
             setShowOnboardingSurvey(false);
             if (resumeAnalyzeAfterSurveyRef.current) {

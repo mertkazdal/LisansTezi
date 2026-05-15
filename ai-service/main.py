@@ -1,8 +1,16 @@
 import asyncio
 import json
+import logging
+import os
+import sys
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
+import structlog
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -17,10 +25,115 @@ from services.gemini_service import (
     generate_personality_avatar,
 )
 from services.image_validation_service import ImageValidationError, validate_image_payload
+from services.local_face_emotion_service import LocalFaceEmotionError, warmup_local_face_emotion_model
 from services.personality_service import detect_personality, load_survey_questions
 from services.personality_update_service import update_personality_from_behavior
+from services.recommendation_runtime import redis_health
 from services.spotify_service import get_music_recommendations
 from services.tmdb_service import MovieRecommendationProviderError, get_movie_recommendations
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(message)s",
+)
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.add_log_level,
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+)
+logger = structlog.get_logger("ai-service")
+
+_REQUIRED_EXTERNAL_KEYS = {
+    "SPOTIFY_CLIENT_ID": "Music recommendations",
+    "SPOTIFY_CLIENT_SECRET": "Music recommendations",
+    "TMDB_API_KEY": "Film recommendations",
+    "GOOGLE_BOOKS_API_KEY": "Book recommendations",
+}
+_REQUIRED_GEMINI_KEYS = [
+    "GEMINI_KEY_PERSONALITY",
+    "GEMINI_KEY_TEXT_EMOTION",
+    "GEMINI_KEY_CONFLICT_1",
+    "GEMINI_KEY_CONFLICT_2",
+    "GEMINI_KEY_CONFLICT_3",
+    "GEMINI_KEY_RECOMMENDATIONS",
+    "GEMINI_KEY_PERSONALITY_UPDATE",
+    "GEMINI_KEY_FILM_QUERIES",
+]
+
+
+def _print_startup_key_check() -> None:
+    print("=== AI Service Startup Check ===")
+    for key, purpose in _REQUIRED_EXTERNAL_KEYS.items():
+        if not os.getenv(key):
+            print(f"WARNING: {key} is not set - {purpose} will use demo fallback")
+            logger.warning("startup_key_missing", key=key, purpose=purpose)
+        else:
+            print(f"OK: {key} is set")
+            logger.info("startup_key_present", key=key, purpose=purpose)
+
+    for key in _REQUIRED_GEMINI_KEYS:
+        if not os.getenv(key):
+            print(f"WARNING: {key} is not set - related Gemini step will fail")
+            logger.warning("startup_gemini_key_missing", key=key)
+        else:
+            print(f"OK: {key} is set")
+            logger.info("startup_gemini_key_present", key=key)
+    print("================================")
+
+
+def _print_image_emotion_startup_check() -> None:
+    provider = (os.getenv("IMAGE_EMOTION_PROVIDER") or "local").strip().lower() or "local"
+    allow_fallback = (os.getenv("ALLOW_GEMINI_VISION_FALLBACK") or "false").strip().lower()
+    model_id = (os.getenv("LOCAL_FACE_MODEL_ID") or "trpakov/vit-face-expression").strip()
+    model_dir = (os.getenv("LOCAL_FACE_MODEL_DIR") or "/opt/models/trpakov-vit-face-expression").strip()
+    model_path = Path(model_dir)
+    onnx_files = list(model_path.rglob("*.onnx")) if model_path.exists() else []
+
+    print("=== Image Emotion Provider Check ===")
+    print(f"IMAGE_EMOTION_PROVIDER={provider}")
+    print(f"ALLOW_GEMINI_VISION_FALLBACK={allow_fallback}")
+    if provider == "local":
+        print("OK: Local image emotion provider is enabled")
+        print(f"OK: LOCAL_FACE_MODEL_ID={model_id}")
+        if model_path.exists():
+            print(f"OK: LOCAL_FACE_MODEL_DIR exists: {model_dir}")
+            if (model_path / "config.json").exists():
+                print("OK: local face model config.json exists")
+            else:
+                print("WARNING: local face model config.json is missing; first valid image may download/repair model files")
+
+            if onnx_files:
+                print(f"OK: local face ONNX model exists: {onnx_files[0]}")
+            else:
+                print("WARNING: local face ONNX model is missing; first valid image will download model files")
+        else:
+            print(f"WARNING: LOCAL_FACE_MODEL_DIR not found: {model_dir}; first valid image will download model files")
+    elif provider == "gemini":
+        print("WARNING: Gemini image emotion provider selected; local visual emotion is not the active provider")
+    else:
+        print(f"WARNING: Unknown IMAGE_EMOTION_PROVIDER value: {provider}")
+    print("====================================")
+
+
+_print_startup_key_check()
+_print_image_emotion_startup_check()
+
+def _parse_allowed_origins() -> tuple[list[str], bool]:
+    raw = (
+        os.getenv("AI_ALLOWED_ORIGINS")
+        or os.getenv("ALLOWED_ORIGINS")
+        or "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+    )
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if "*" in origins:
+        return ["*"], False
+    return origins, True
+
+
+_allowed_origins, _allow_credentials = _parse_allowed_origins()
 
 app = FastAPI(
     title="Yaşam Koçu AI Service",
@@ -30,11 +143,34 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_allowed_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+async def _warmup_local_face_model_background() -> None:
+    provider = (os.getenv("IMAGE_EMOTION_PROVIDER") or "local").strip().lower() or "local"
+    if provider != "local":
+        return
+
+    try:
+        print("Local face emotion model warmup started")
+        info = await asyncio.to_thread(warmup_local_face_emotion_model, "tr")
+        print(f"Local face emotion model warmup finished: {info['model_used']} at {info['model_dir']}")
+        logger.info("local_face_model_warmup_finished", **info)
+    except LocalFaceEmotionError as exc:
+        print(f"WARNING: local face emotion model warmup failed: {exc.code} {exc.message}")
+        logger.warning("local_face_model_warmup_failed", code=exc.code, message=exc.message)
+    except Exception as exc:
+        print(f"WARNING: local face emotion model warmup failed: {exc}")
+        logger.warning("local_face_model_warmup_failed", error=str(exc))
+
+
+@app.on_event("startup")
+async def startup_warmups() -> None:
+    asyncio.create_task(_warmup_local_face_model_background())
 
 
 class AnalyzeRequest(BaseModel):
@@ -62,6 +198,13 @@ class AnalyzeResponse(BaseModel):
     imageFallbackUsed: Optional[bool] = False
     contradictionDetected: Optional[bool] = False
     clarificationMessage: Optional[str] = None
+    textValidationFailed: Optional[bool] = False
+    textValidationReason: Optional[str] = None
+    textValidationCode: Optional[str] = None
+    textQualityScore: Optional[float] = None
+    modelUsed: Optional[str] = None
+    imageModelUsed: Optional[str] = None
+    imageProvider: Optional[str] = None
 
 
 class RecommendationsRequest(BaseModel):
@@ -90,6 +233,7 @@ class RecommendationsResponse(BaseModel):
     status: Optional[str] = "complete"
     partial_error: Optional[str] = None
     missing_recommendations: Optional[list[str]] = None
+    data_sources: Optional[dict[str, str]] = None
 
 
 class ImageValidationRequest(BaseModel):
@@ -117,9 +261,53 @@ class AvatarGenerationRequest(BaseModel):
     dominant_emotion: Optional[str] = "calm"
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(
+        "unhandled_exception",
+        path=str(request.url.path),
+        method=request.method,
+        error_type=exc.__class__.__name__,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": "UNHANDLED_ERROR",
+            "message": "Unexpected server error.",
+        },
+    )
+
+
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "ai-service"}
+    model_dir = Path(os.getenv("LOCAL_FACE_MODEL_DIR") or "/opt/models/trpakov-vit-face-expression")
+    onnx_files = list(model_dir.rglob("*.onnx")) if model_dir.exists() else []
+    redis = await redis_health()
+    local_model = {
+        "provider": (os.getenv("IMAGE_EMOTION_PROVIDER") or "local").strip().lower() or "local",
+        "modelId": os.getenv("LOCAL_FACE_MODEL_ID") or "trpakov/vit-face-expression",
+        "modelDir": str(model_dir),
+        "directoryExists": model_dir.exists(),
+        "configExists": (model_dir / "config.json").exists(),
+        "onnxExists": bool(onnx_files),
+    }
+    required_keys = {
+        key: bool(os.getenv(key))
+        for key in [*_REQUIRED_EXTERNAL_KEYS.keys(), *_REQUIRED_GEMINI_KEYS]
+    }
+    healthy = bool(redis.get("available")) and (
+        local_model["provider"] != "local" or local_model["onnxExists"]
+    )
+
+    return {
+        "status": "healthy" if healthy else "degraded",
+        "service": "ai-service",
+        "dependencies": {
+            "redis": redis,
+            "localFaceModel": local_model,
+            "requiredKeys": required_keys,
+        },
+    }
 
 
 @app.get("/survey/questions")
@@ -233,13 +421,20 @@ async def analyze(request: AnalyzeRequest):
         faceConfidence=result.get("face_confidence"),
         textEmotion=result.get("text_emotion"),
         textConfidence=result.get("text_confidence"),
-        needsReason=False,
-        followUpQuestion="",
-        reasonProvided=True,
+        needsReason=result.get("needs_reason", False),
+        followUpQuestion=result.get("follow_up_question", ""),
+        reasonProvided=result.get("reason_provided", True),
         warning=result.get("warning"),
         imageFallbackUsed=result.get("image_fallback_used", False),
         contradictionDetected=result.get("contradiction_detected", False),
         clarificationMessage=result.get("clarification_message"),
+        textValidationFailed=result.get("text_validation_failed", False),
+        textValidationReason=result.get("text_validation_reason"),
+        textValidationCode=result.get("text_validation_code"),
+        textQualityScore=result.get("text_quality_score"),
+        modelUsed=result.get("model_used"),
+        imageModelUsed=result.get("image_model_used"),
+        imageProvider=result.get("image_provider"),
     )
 
 
@@ -275,6 +470,9 @@ async def recommendations(request: RecommendationsRequest):
         movies = _limit_and_pad(demo_bundle["movies"], demo_bundle["movies"])
         books = _limit_and_pad(demo_bundle["books"], demo_bundle["books"])
         advice = _limit_and_pad(demo_bundle["lifeAdvice"], demo_bundle["lifeAdvice"])
+        music, music_source = _tag_items_source(music, "music", forced_source="demo")
+        movies, movies_source = _tag_items_source(movies, "movies", forced_source="demo")
+        books, books_source = _tag_items_source(books, "books", forced_source="demo")
         return RecommendationsResponse(
             coachComment=coach_comment,
             coach_advice=coach_comment,
@@ -286,6 +484,11 @@ async def recommendations(request: RecommendationsRequest):
             activities=advice,
             status="complete",
             missing_recommendations=[],
+            data_sources={
+                "music": music_source,
+                "films": movies_source,
+                "books": books_source,
+            },
         )
 
     partial_errors: list[str] = []
@@ -296,6 +499,8 @@ async def recommendations(request: RecommendationsRequest):
             language,
             request.prefer_followup_key or False,
             request.personality_json,
+            request.age_group,
+            request.confidence,
         )
     except Exception as exc:
         print(f"Follow-up bundle error: {exc}")
@@ -308,12 +513,17 @@ async def recommendations(request: RecommendationsRequest):
 
     query_bundle = followup_bundle.get("queries") if isinstance(followup_bundle, dict) else {}
     query_bundle = query_bundle if isinstance(query_bundle, dict) else {}
-    music_task = get_music_recommendations(emotion, enriched_context, query_bundle.get("music_queries"))
+    music_task = get_music_recommendations(
+        emotion,
+        enriched_context,
+        query_bundle.get("music_queries"),
+        request.age_group,
+    )
     movies_task = get_movie_recommendations(
         emotion,
         enriched_context,
         language,
-        None,
+        query_bundle.get("film_queries"),
         request.age_group,
         request.survey_movie_genres or [],
         request.user_id,
@@ -330,6 +540,7 @@ async def recommendations(request: RecommendationsRequest):
     )
 
     missing_recommendations: list[str] = []
+    movies_provider_failed = False
 
     if isinstance(music, Exception):
         print(f"Music recommendation error: {music}")
@@ -339,6 +550,7 @@ async def recommendations(request: RecommendationsRequest):
         print(f"Movie recommendation provider error: {movies}")
         missing_recommendations.append("films")
         movies = movies.fallback_movies
+        movies_provider_failed = True
     elif isinstance(movies, Exception):
         print(f"Movie recommendation error: {movies}")
         missing_recommendations.append("films")
@@ -368,6 +580,13 @@ async def recommendations(request: RecommendationsRequest):
     movies = _limit_and_pad(movies, demo_bundle["movies"])
     books = _limit_and_pad(books, demo_bundle["books"])
     advice = _limit_and_pad(advice, demo_bundle["lifeAdvice"])
+    music, music_source = _tag_items_source(music, "music")
+    movies, movies_source = _tag_items_source(
+        movies,
+        "movies",
+        forced_source="demo" if movies_provider_failed else None,
+    )
+    books, books_source = _tag_items_source(books, "books")
 
     partial_error = None
     if missing_recommendations:
@@ -387,6 +606,11 @@ async def recommendations(request: RecommendationsRequest):
         status="partial" if partial_error else "complete",
         partial_error=partial_error,
         missing_recommendations=missing_recommendations,
+        data_sources={
+            "music": music_source,
+            "films": movies_source,
+            "books": books_source,
+        },
     )
 
 
@@ -409,6 +633,40 @@ def _limit_and_pad(items: list | None, fallback: list | None, limit: int = 3) ->
             if len(result) >= limit:
                 return result[:limit]
     return result[:limit]
+
+
+def _tag_items_source(
+    items: list | None,
+    category: str,
+    forced_source: str | None = None,
+) -> tuple[list, str]:
+    source = forced_source or "demo"
+    tagged_items = []
+
+    for item in items or []:
+        if not isinstance(item, dict):
+            tagged_items.append(item)
+            continue
+
+        tagged = dict(item)
+        item_source = forced_source
+        if item_source is None:
+            if category == "music" and tagged.get("spotify_url"):
+                item_source = "spotify"
+                source = "spotify"
+            elif category == "movies" and tagged.get("tmdb_url"):
+                item_source = "tmdb"
+                source = "tmdb"
+            elif category == "books" and tagged.get("link"):
+                item_source = "google_books"
+                source = "google_books"
+            else:
+                item_source = "demo"
+
+        tagged["source"] = item_source
+        tagged_items.append(tagged)
+
+    return tagged_items, source
 
 
 def build_demo_coach_comment(emotion: str, context: str | None, language: str) -> str:

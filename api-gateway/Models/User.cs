@@ -70,4 +70,5 @@ public class User
     public ICollection<AnalysisRecord> AnalysisRecords { get; set; } = new List<AnalysisRecord>();
     public ICollection<PersonalityUpdateLog> PersonalityUpdateLogs { get; set; } = new List<PersonalityUpdateLog>();
     public ICollection<UserMediaLog> MediaLogs { get; set; } = new List<UserMediaLog>();
+    public ICollection<SavedRecommendation> SavedRecommendations { get; set; } = new List<SavedRecommendation>();
 }

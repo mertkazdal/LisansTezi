@@ -70,6 +70,7 @@ public class AnalyzeController : ControllerBase
         NormalizedRecommendationSurvey? guestSurvey = null;
         string? personalityJson = null;
         string? profileAgeGroup = null;
+        string? guestAgeGroup = null;
 
         if (userId is { } authenticatedUserId)
         {
@@ -110,6 +111,11 @@ public class AnalyzeController : ControllerBase
         {
             return SurveyRequired(language);
         }
+        else
+        {
+            personalityJson = NormalizePersonalityJson(guestSession?.PersonalityJson);
+            guestAgeGroup = NormalizeAgeGroupOrNull(guestSession?.AgeGroup);
+        }
 
         if (userId == null)
         {
@@ -126,15 +132,6 @@ public class AnalyzeController : ControllerBase
         }
 
         var analysisAttemptIndex = _analysisCooldowns.GetCurrentAttemptIndex(actorKey);
-        if (_analysisCooldowns.TryGetRemainingSeconds(actorKey, out var cooldownRemainingSeconds))
-        {
-            return StatusCode(StatusCodes.Status429TooManyRequests, new
-            {
-                message = BuildCooldownMessage(language, cooldownRemainingSeconds),
-                code = "ANALYSIS_COOLDOWN_ACTIVE",
-                retryAfterSeconds = cooldownRemainingSeconds
-            });
-        }
 
         if (!hasImage && !hasText)
         {
@@ -145,7 +142,15 @@ public class AnalyzeController : ControllerBase
             });
         }
 
-        if (!TryNormalizeAnalysisAge(request.Age, language, out var analysisAge, out var ageCode, out var ageMessage))
+        var requestAgeGroup = NormalizeAgeGroupOrNull(request.AgeGroup);
+        var existingAgeGroup = requestAgeGroup ?? profileAgeGroup ?? guestAgeGroup;
+        if (!TryNormalizeAnalysisAge(
+                request.Age,
+                existingAgeGroup,
+                language,
+                out var analysisAge,
+                out var ageCode,
+                out var ageMessage))
         {
             return BadRequest(new
             {
@@ -153,8 +158,7 @@ public class AnalyzeController : ControllerBase
                 code = ageCode
             });
         }
-        var requestAgeGroup = NormalizeAgeGroupOrNull(request.AgeGroup);
-        var recommendationAgeGroup = requestAgeGroup ?? profileAgeGroup ?? AgeToGroup(analysisAge);
+        var recommendationAgeGroup = existingAgeGroup ?? AgeToGroup(analysisAge);
 
         if (hasImage && IsUnsupportedHeicMimeType(request.MimeType))
         {
@@ -171,7 +175,7 @@ public class AnalyzeController : ControllerBase
             return BadRequest(new
             {
                 message = BuildUnsupportedImageTypeMessage(language),
-                code = "UNSUPPORTED_IMAGE_MIME_TYPE"
+                code = "UNSUPPORTED_IMAGE_TYPE"
             });
         }
 
@@ -199,6 +203,21 @@ public class AnalyzeController : ControllerBase
                     code = ex.ErrorCode ?? "IMAGE_VALIDATION_FAILED"
                 });
             }
+        }
+
+        if (_analysisCooldowns.TryGetRemainingSeconds(actorKey, out var cooldownRemainingSeconds, out var cooldownReason))
+        {
+            var isTextValidationCooldown = string.Equals(cooldownReason, "text_validation", StringComparison.Ordinal);
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                message = isTextValidationCooldown
+                    ? BuildTextValidationCooldownMessage(language, cooldownRemainingSeconds)
+                    : BuildCooldownMessage(language, cooldownRemainingSeconds),
+                code = isTextValidationCooldown
+                    ? "ANALYSIS_TEXT_VALIDATION_COOLDOWN"
+                    : "ANALYSIS_COOLDOWN_ACTIVE",
+                retryAfterSeconds = cooldownRemainingSeconds
+            });
         }
 
         if (userId == null &&
@@ -252,12 +271,63 @@ public class AnalyzeController : ControllerBase
             var faceConfidence = GetOptionalDouble(aiResult, "faceConfidence") ?? GetOptionalDouble(aiResult, "face_confidence");
             var textEmotion = GetOptionalString(aiResult, "textEmotion") ?? GetOptionalString(aiResult, "text_emotion");
             var textConfidence = GetOptionalDouble(aiResult, "textConfidence") ?? GetOptionalDouble(aiResult, "text_confidence");
+            var textValidationFailed = GetOptionalBool(aiResult, "textValidationFailed")
+                ?? GetOptionalBool(aiResult, "text_validation_failed")
+                ?? false;
+            var textValidationReason = GetOptionalString(aiResult, "textValidationReason")
+                ?? GetOptionalString(aiResult, "text_validation_reason");
+            var textValidationCode = GetOptionalString(aiResult, "textValidationCode")
+                ?? GetOptionalString(aiResult, "text_validation_code");
+            var textQualityScore = GetOptionalDouble(aiResult, "textQualityScore")
+                ?? GetOptionalDouble(aiResult, "text_quality_score");
+            var aiModelUsed = GetOptionalString(aiResult, "modelUsed")
+                ?? GetOptionalString(aiResult, "model_used");
+            var aiImageModelUsed = GetOptionalString(aiResult, "imageModelUsed")
+                ?? GetOptionalString(aiResult, "image_model_used");
+            var aiImageProvider = GetOptionalString(aiResult, "imageProvider")
+                ?? GetOptionalString(aiResult, "image_provider");
+            var resolvedModelUsed = imageFallbackUsed
+                ? "gemini-text"
+                : hasImage && hasText && !string.IsNullOrWhiteSpace(aiImageModelUsed)
+                    ? $"{aiImageModelUsed} + gemini-text"
+                    : aiModelUsed ?? aiImageModelUsed ?? ResolveModelUsed(hasImage, hasText);
+
+            if (hasText && textValidationFailed)
+            {
+                if (analysisAttemptIndex >= FinalAnalysisKeyAttemptIndex)
+                {
+                    _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds, "text_validation");
+                    return StatusCode(StatusCodes.Status429TooManyRequests, new
+                    {
+                        message = BuildTextValidationCooldownMessage(language, DefaultAnalysisCooldownSeconds),
+                        code = "ANALYSIS_TEXT_VALIDATION_COOLDOWN",
+                        retryAfterSeconds = DefaultAnalysisCooldownSeconds,
+                        textValidationReason,
+                        textValidationCode,
+                        textQualityScore
+                    });
+                }
+
+                _analysisCooldowns.AdvanceRetryAttempt(actorKey);
+                var textAlert = BuildTextValidationAlert(language, analysisAttemptIndex, clarificationMessage ?? analysisWarning);
+                return StatusCode(StatusCodes.Status409Conflict, new
+                {
+                    message = textAlert.Message,
+                    code = "ANALYSIS_TEXT_VALIDATION_WARNING",
+                    alertTitle = textAlert.Title,
+                    alertHint = textAlert.Hint,
+                    nextAttempt = analysisAttemptIndex + 2,
+                    textValidationReason,
+                    textValidationCode,
+                    textQualityScore
+                });
+            }
 
             if (hasImage && hasText && contradictionDetected)
             {
                 if (analysisAttemptIndex >= FinalAnalysisKeyAttemptIndex)
                 {
-                    _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds);
+                    _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds, "contradiction");
                     return StatusCode(StatusCodes.Status429TooManyRequests, new
                     {
                         message = BuildCooldownMessage(language, DefaultAnalysisCooldownSeconds),
@@ -358,7 +428,7 @@ public class AnalyzeController : ControllerBase
                     explanation,
                     guestWarning,
                     modalityUsed,
-                    imageFallbackUsed ? "gemini-text" : ResolveModelUsed(hasImage, hasText),
+                    resolvedModelUsed,
                     (int)stopwatch.ElapsedMilliseconds,
                     faceDetected,
                     guestRecommendationBundle
@@ -372,7 +442,9 @@ public class AnalyzeController : ControllerBase
                     explanation,
                     warning = guestWarning,
                     modalityUsed,
-                    modelUsed = imageFallbackUsed ? "gemini-text" : ResolveModelUsed(hasImage, hasText),
+                    modelUsed = resolvedModelUsed,
+                    imageModelUsed = aiImageModelUsed,
+                    imageProvider = aiImageProvider,
                     responseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                     faceDetected,
                     needsReason = false,
@@ -394,7 +466,9 @@ public class AnalyzeController : ControllerBase
                         books = guestRecommendationBundle.Books,
                         lifeAdvice = guestRecommendationBundle.LifeAdvice,
                         activities = guestRecommendationBundle.LifeAdvice
-                    }
+                    },
+                    data_sources = GetRecommendationDataSources(guestRecommendations),
+                    dataSources = GetRecommendationDataSources(guestRecommendations)
                 });
             }
 
@@ -411,7 +485,7 @@ public class AnalyzeController : ControllerBase
                     ? $"analysis_{DateTime.UtcNow:yyyyMMddHHmmss}{GetImageExtension(normalizedMimeType)}"
                     : null,
                 ModalityUsed = modalityUsed,
-                ModelUsed = imageFallbackUsed ? "gemini-text" : ResolveModelUsed(hasImage, hasText),
+                ModelUsed = resolvedModelUsed,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 FaceDetected = faceDetected
             };
@@ -484,6 +558,7 @@ public class AnalyzeController : ControllerBase
             }
 
             await SaveAnalysisRecordAsync(
+                history.Id,
                 resolvedUserId,
                 hasImage,
                 hasText,
@@ -511,6 +586,8 @@ public class AnalyzeController : ControllerBase
                 warning,
                 modalityUsed = history.ModalityUsed,
                 modelUsed = history.ModelUsed,
+                imageModelUsed = aiImageModelUsed,
+                imageProvider = aiImageProvider,
                 responseTimeMs = history.ResponseTimeMs,
                 faceDetected = history.FaceDetected,
                 needsReason = false,
@@ -534,17 +611,31 @@ public class AnalyzeController : ControllerBase
                     books = GetRecommendationCategory(recommendations, "books"),
                     lifeAdvice = GetRecommendationCategory(recommendations, "lifeAdvice"),
                     activities = GetRecommendationCategory(recommendations, "activities")
-                }
+                },
+                data_sources = GetRecommendationDataSources(recommendations),
+                dataSources = GetRecommendationDataSources(recommendations)
             });
         }
         catch (AiServiceException ex)
         {
+            if (IsImageContractErrorCode(ex.ErrorCode))
+            {
+                var statusCode = ex.StatusCode is >= 400 and < 600
+                    ? ex.StatusCode
+                    : StatusCodes.Status400BadRequest;
+                return StatusCode(statusCode, new
+                {
+                    message = ex.Message,
+                    code = ex.ErrorCode
+                });
+            }
+
             if (hasImage &&
                 hasText &&
                 analysisAttemptIndex >= FinalAnalysisKeyAttemptIndex &&
                 ex.ErrorCode == "AI_QUOTA_EXCEEDED")
             {
-                _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds);
+                _analysisCooldowns.StartCooldown(actorKey, DefaultAnalysisCooldownSeconds, "contradiction");
                 return StatusCode(StatusCodes.Status429TooManyRequests, new
                 {
                     message = BuildCooldownMessage(language, DefaultAnalysisCooldownSeconds),
@@ -556,7 +647,7 @@ public class AnalyzeController : ControllerBase
             if (ex.ErrorCode == "ANALYSIS_RETRY_COOLDOWN")
             {
                 var retryAfterSeconds = Math.Max(1, ex.RetryAfterSeconds ?? DefaultAnalysisCooldownSeconds);
-                _analysisCooldowns.StartCooldown(actorKey, retryAfterSeconds);
+                _analysisCooldowns.StartCooldown(actorKey, retryAfterSeconds, "contradiction");
                 return StatusCode(StatusCodes.Status429TooManyRequests, new
                 {
                     message = ex.Message,
@@ -634,6 +725,7 @@ public class AnalyzeController : ControllerBase
 
     private static bool TryNormalizeAnalysisAge(
         int? age,
+        string? existingAgeGroup,
         string language,
         out int normalizedAge,
         out string code,
@@ -648,6 +740,12 @@ public class AnalyzeController : ControllerBase
 
         if (age == null)
         {
+            if (!string.IsNullOrWhiteSpace(existingAgeGroup))
+            {
+                normalizedAge = RepresentativeAgeForGroup(existingAgeGroup);
+                return true;
+            }
+
             return false;
         }
 
@@ -662,6 +760,18 @@ public class AnalyzeController : ControllerBase
 
         normalizedAge = age.Value;
         return true;
+    }
+
+    private static int RepresentativeAgeForGroup(string ageGroup)
+    {
+        return ageGroup switch
+        {
+            "teen" => 16,
+            "young_adult" => 21,
+            "adult" => 30,
+            "mature" => 45,
+            _ => 30
+        };
     }
 
     private static string AgeToGroup(int age)
@@ -733,6 +843,7 @@ public class AnalyzeController : ControllerBase
     }
 
     private async Task SaveAnalysisRecordAsync(
+        Guid emotionHistoryId,
         Guid userId,
         bool hasImage,
         bool hasText,
@@ -752,6 +863,7 @@ public class AnalyzeController : ControllerBase
 
         _db.AnalysisRecords.Add(new AnalysisRecord
         {
+            EmotionHistoryId = emotionHistoryId,
             UserId = userId,
             InputType = ResolveInputType(hasImage, hasText),
             EmotionResult = emotion,
@@ -1274,6 +1386,28 @@ public class AnalyzeController : ControllerBase
         return JsonSerializer.Deserialize<object>(categoryData.GetRawText()) ?? Array.Empty<object>();
     }
 
+    private static object GetRecommendationDataSources(JsonElement? recommendations)
+    {
+        if (recommendations is not { } value ||
+            !value.TryGetProperty("data_sources", out var dataSources) ||
+            dataSources.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return new
+            {
+                music = "demo",
+                films = "demo",
+                books = "demo"
+            };
+        }
+
+        return JsonSerializer.Deserialize<object>(dataSources.GetRawText()) ?? new
+        {
+            music = "demo",
+            films = "demo",
+            books = "demo"
+        };
+    }
+
     private static string? NormalizePersonalityJson(string? rawJson)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
@@ -1391,6 +1525,18 @@ public class AnalyzeController : ControllerBase
         }
 
         return "gemini-text";
+    }
+
+    private static bool IsImageContractErrorCode(string? code)
+    {
+        return code is
+            "UNSUPPORTED_IMAGE_TYPE" or
+            "INVALID_IMAGE" or
+            "IMAGE_TOO_LARGE" or
+            "NO_FACE_DETECTED" or
+            "MULTIPLE_FACES_DETECTED" or
+            "FACE_TOO_SMALL" or
+            "FACE_MODEL_UNAVAILABLE";
     }
 
     private static string BuildAnalysisContext(
@@ -1511,6 +1657,17 @@ public class AnalyzeController : ControllerBase
         return $"Analysis is temporarily locked because the selfie and text stayed contradictory. Please try again in {normalizedSeconds} seconds.";
     }
 
+    private static string BuildTextValidationCooldownMessage(string language, int retryAfterSeconds)
+    {
+        var normalizedSeconds = Math.Max(1, retryAfterSeconds);
+        if (language == "tr")
+        {
+            return $"Metin arka arkaya duygu analizi için yeterince anlamlı bulunmadı. Lütfen {normalizedSeconds} saniye sonra ne yaşadığını veya nasıl hissettiğini daha net yazarak tekrar dene.";
+        }
+
+        return $"The text was not clear enough for emotion analysis after repeated checks. Please try again in {normalizedSeconds} seconds with a clearer description of what happened or how you feel.";
+    }
+
     private static string BuildGuestQuotaMessage(string language)
     {
         if (language == "tr")
@@ -1573,7 +1730,7 @@ public class AnalyzeController : ControllerBase
 
     private static string ResolveAnalysisKeyEnv(bool hasImage, bool hasText, int attemptIndex)
     {
-        if (!(hasImage && hasText))
+        if (!hasText)
         {
             return "GEMINI_KEY_TEXT_EMOTION";
         }
@@ -1584,6 +1741,54 @@ public class AnalyzeController : ControllerBase
             2 => "GEMINI_KEY_CONFLICT_3",
             _ => "GEMINI_KEY_CONFLICT_1"
         };
+    }
+
+    private static (string Title, string Message, string Hint) BuildTextValidationAlert(
+        string language,
+        int attemptIndex,
+        string? validationMessage
+    )
+    {
+        if (language == "tr")
+        {
+            var message = string.IsNullOrWhiteSpace(validationMessage)
+                ? "Metin duygu analizi için yeterince anlamlı görünmüyor. Lütfen ne yaşadığını ya da nasıl hissettiğini birkaç net cümleyle yaz."
+                : validationMessage;
+
+            if (attemptIndex >= 1)
+            {
+                return (
+                    "Metin hâlâ net değil",
+                    message,
+                    "Bir sonraki denemede metni son kez farklı bir analiz anahtarıyla denetleyeceğiz."
+                );
+            }
+
+            return (
+                "Metin net değil",
+                message,
+                "Metni biraz daha açıklayıp tekrar dene; sistemi farklı bir analiz anahtarıyla yeniden denetleyeceğiz."
+            );
+        }
+
+        var englishMessage = string.IsNullOrWhiteSpace(validationMessage)
+            ? "The text does not look clear enough for emotion analysis. Please write a few meaningful words about what happened or how you feel."
+            : validationMessage;
+
+        if (attemptIndex >= 1)
+        {
+            return (
+                "Text is still unclear",
+                englishMessage,
+                "Your next retry will run the final text validation check with another analysis key."
+            );
+        }
+
+        return (
+            "Text is unclear",
+            englishMessage,
+            "Add a little more detail and retry; we will re-check it with another analysis key."
+        );
     }
 
     private static (string Title, string Message, string Hint) BuildContradictionAlert(
@@ -1659,7 +1864,15 @@ public class AnalyzeController : ControllerBase
         var surveyCompleted = cookieState != null &&
             string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal) &&
             cookieState.SurveyCompleted;
-        var state = new GuestSessionState(sessionId, count, surveyCompleted);
+        var personalityJson = cookieState != null &&
+            string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal)
+            ? cookieState.PersonalityJson
+            : null;
+        var ageGroup = cookieState != null &&
+            string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal)
+            ? cookieState.AgeGroup
+            : null;
+        var state = new GuestSessionState(sessionId, count, surveyCompleted, personalityJson, ageGroup);
         WriteGuestSessionStateCookie(state);
         return state;
     }
@@ -1726,5 +1939,11 @@ public class AnalyzeController : ControllerBase
         return Guid.TryParse(claim, out var id) ? id : null;
     }
 
-    private sealed record GuestSessionState(string SessionId, int CompletedAnalyses, bool SurveyCompleted = false);
+    private sealed record GuestSessionState(
+        string SessionId,
+        int CompletedAnalyses,
+        bool SurveyCompleted = false,
+        string? PersonalityJson = null,
+        string? AgeGroup = null
+    );
 }

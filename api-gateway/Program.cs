@@ -1,12 +1,23 @@
+using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using MoodLens.ApiGateway.Data;
 using MoodLens.ApiGateway.Services;
+using Serilog;
+
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .CreateLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog();
 
 // --- Configuration ---
 var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? "moodlens_default_secret_key_32chars!!";
@@ -24,6 +35,11 @@ var reasonCheckTimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable(
     configuredReasonTimeout > 0
     ? configuredReasonTimeout
     : 20;
+var allowedOrigins = ParseCsv(
+    Environment.GetEnvironmentVariable("ALLOWED_ORIGINS")
+    ?? "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+);
+var allowAnyCorsOrigin = allowedOrigins.Contains("*", StringComparer.Ordinal);
 var applyMigrationsOnStartup = bool.TryParse(Environment.GetEnvironmentVariable("APPLY_MIGRATIONS_ON_STARTUP"), out var configuredApplyMigrations)
     ? configuredApplyMigrations
     : builder.Environment.IsDevelopment();
@@ -66,6 +82,7 @@ builder.Services.AddHttpClient("ReasonCheckService", client =>
 });
 
 // Custom services
+builder.Services.AddSingleton<RedisCacheService>();
 builder.Services.AddScoped<AuthService>(sp =>
     new AuthService(jwtSecret, jwtIssuer, jwtAudience));
 builder.Services.AddScoped<AiServiceClient>();
@@ -81,13 +98,55 @@ builder.Services.AddScoped(sp =>
         reasonCheckApiKey
     ));
 
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            code = "RATE_LIMITED",
+            message = "Too many requests. Please try again shortly."
+        }, cancellationToken);
+    };
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var path = httpContext.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+        var key = ResolveRateLimitKey(httpContext);
+        var isHealth = path.StartsWith("/health", StringComparison.Ordinal);
+        var isAuth = path.StartsWith("/api/auth/login", StringComparison.Ordinal) ||
+                     path.StartsWith("/api/auth/register", StringComparison.Ordinal);
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"{(isHealth ? "health" : isAuth ? "auth" : "general")}:{key}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = isHealth ? 600 : isAuth ? 15 : 120,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+});
+
 // CORS
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
+        if (allowAnyCorsOrigin)
+        {
+            policy.AllowAnyOrigin();
+        }
+        else
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowCredentials();
+        }
+
+        policy.AllowAnyMethod()
               .AllowAnyHeader();
     });
 });
@@ -119,6 +178,11 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+if (string.Equals(jwtSecret, "moodlens_default_secret_key_32chars!!", StringComparison.Ordinal))
+{
+    app.Logger.LogWarning("JWT_SECRET is using the development fallback value. Set a strong secret outside local development.");
+}
+
 if (applyMigrationsOnStartup)
 {
     using var scope = app.Services.CreateScope();
@@ -141,17 +205,117 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("GlobalExceptionHandler");
+
+        if (exceptionFeature?.Error is not null)
+        {
+            logger.LogError(exceptionFeature.Error, "Unhandled API Gateway exception");
+        }
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            code = "UNHANDLED_ERROR",
+            message = "Unexpected server error."
+        });
+    });
+});
+
+app.UseSerilogRequestLogging();
 app.UseCors();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
-app.MapGet("/health", () => Results.Ok(new
+app.MapGet("/health", async (
+    AppDbContext dbContext,
+    IHttpClientFactory httpClientFactory,
+    RedisCacheService redisCache,
+    CancellationToken cancellationToken) =>
 {
-    status = "healthy",
-    service = "api-gateway"
-}));
+    var database = await CheckDatabaseAsync(dbContext, cancellationToken);
+    var aiService = await CheckAiServiceAsync(httpClientFactory, cancellationToken);
+    var redis = await redisCache.CheckAsync(cancellationToken);
+    var healthy = database.Available && aiService.Available && redis.Available;
+
+    return Results.Ok(new
+    {
+        status = healthy ? "healthy" : "degraded",
+        service = "api-gateway",
+        dependencies = new
+        {
+            database,
+            aiService,
+            redis
+        }
+    });
+});
 app.MapControllers();
 
 app.Run();
+
+static string[] ParseCsv(string value)
+{
+    return value
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+}
+
+static string ResolveRateLimitKey(HttpContext context)
+{
+    var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (!string.IsNullOrWhiteSpace(userId))
+    {
+        return $"user:{userId}";
+    }
+
+    var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+    var ip = forwardedFor?.Split(',').FirstOrDefault()?.Trim();
+    if (string.IsNullOrWhiteSpace(ip))
+    {
+        ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
+
+    return $"ip:{ip}";
+}
+
+static async Task<HealthDependency> CheckDatabaseAsync(AppDbContext dbContext, CancellationToken cancellationToken)
+{
+    try
+    {
+        var available = await dbContext.Database.CanConnectAsync(cancellationToken);
+        return new HealthDependency(available, available ? "ok" : "unavailable", null);
+    }
+    catch (Exception ex)
+    {
+        return new HealthDependency(false, "error", ex.GetType().Name);
+    }
+}
+
+static async Task<HealthDependency> CheckAiServiceAsync(IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
+{
+    try
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+
+        var client = httpClientFactory.CreateClient("AiService");
+        using var response = await client.GetAsync("/health", timeout.Token);
+        return new HealthDependency(response.IsSuccessStatusCode, response.IsSuccessStatusCode ? "ok" : "unavailable", response.StatusCode.ToString());
+    }
+    catch (Exception ex)
+    {
+        return new HealthDependency(false, "error", ex.GetType().Name);
+    }
+}
 
 static async Task EnsureInitialMigrationBaselineAsync(AppDbContext dbContext)
 {
@@ -222,7 +386,16 @@ static async Task EnsureRuntimeSchemaAsync(AppDbContext dbContext)
         BEGIN
             IF to_regclass('analysis_records') IS NOT NULL THEN
                 ALTER TABLE analysis_records
-                    ADD COLUMN IF NOT EXISTS status character varying(16) NOT NULL DEFAULT 'complete';
+                    ADD COLUMN IF NOT EXISTS status character varying(16) NOT NULL DEFAULT 'complete',
+                    ADD COLUMN IF NOT EXISTS share_token_expires_at timestamp with time zone,
+                    ADD COLUMN IF NOT EXISTS emotion_history_id uuid;
+
+                CREATE INDEX IF NOT EXISTS IX_analysis_records_share_token_expires_at
+                    ON analysis_records(share_token_expires_at);
+
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_analysis_records_emotion_history_id
+                    ON analysis_records(emotion_history_id)
+                    WHERE emotion_history_id IS NOT NULL;
             END IF;
 
             IF to_regclass('user_personality_profiles') IS NOT NULL THEN
@@ -243,3 +416,5 @@ static async Task EnsureRuntimeSchemaAsync(AppDbContext dbContext)
         );
         """);
 }
+
+public sealed record HealthDependency(bool Available, string Status, string? Detail);

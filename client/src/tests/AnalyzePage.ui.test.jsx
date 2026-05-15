@@ -46,6 +46,19 @@ describe("AnalyzePage", () => {
     );
   }
 
+  it("bos kapatilan misafir anketini ayni oturumda otomatik tekrar acmaz", async () => {
+    const user = userEvent.setup();
+    const firstRender = renderWithProviders(<AnalyzePage />);
+
+    await user.click(screen.getByRole("button", { name: /anketi kapat/i }));
+    expect(screen.queryByRole("dialog", { name: /onboarding anketi/i })).not.toBeInTheDocument();
+
+    firstRender.unmount();
+    renderWithProviders(<AnalyzePage />);
+
+    expect(screen.queryByRole("dialog", { name: /onboarding anketi/i })).not.toBeInTheDocument();
+  });
+
   it("misafir anketi eksikse analiz ekranına girişte doğrudan açılır", () => {
     renderWithProviders(<AnalyzePage />);
 

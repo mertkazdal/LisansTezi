@@ -81,7 +81,7 @@ async def _fetch_books(query: str, language: str) -> list[dict]:
         "printType": "books",
     }
 
-    if language != "tr":
+    if language == "en":
         params["langRestrict"] = "en"
 
     if GOOGLE_BOOKS_API_KEY:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import base64
 import json
 import os
 from pathlib import Path
 from threading import Lock
+from typing import Any
+
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "300")
+os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "60")
 
 import cv2
 import numpy as np
@@ -13,13 +16,12 @@ from huggingface_hub import snapshot_download
 from PIL import Image
 from transformers import AutoImageProcessor
 
+from services.image_validation_service import ImageValidationError, validate_and_extract_face
+
 
 DEFAULT_MODEL_ID = "trpakov/vit-face-expression"
 DEFAULT_MODEL_DIR = "/opt/models/trpakov-vit-face-expression"
-DEFAULT_CASCADE_FILES = (
-    "haarcascade_frontalface_default.xml",
-    "haarcascade_frontalface_alt2.xml",
-)
+MODEL_USED = "trpakov/vit-face-expression-onnx"
 ALLOWED_MODEL_PATTERNS = ("*.json", "*.onnx", "*.txt")
 RAW_TO_PROJECT_EMOTION = {
     "angry": "angry",
@@ -32,7 +34,7 @@ RAW_TO_PROJECT_EMOTION = {
 }
 
 _RESOURCE_LOCK = Lock()
-_RESOURCE_BUNDLE: dict | None = None
+_RESOURCE_BUNDLE: dict[str, Any] | None = None
 
 
 class LocalFaceEmotionError(Exception):
@@ -48,22 +50,6 @@ def _normalize_language(language: str | None) -> str:
     return "tr" if normalized.startswith("tr") else "en"
 
 
-def _invalid_image_message(language: str) -> str:
-    if language == "tr":
-        return "Geçerli bir selfie okunamadı. Lütfen farklı bir fotoğrafla tekrar dene."
-    return "A valid selfie could not be read. Please try again with another image."
-
-
-def _face_not_detected_message(language: str) -> str:
-    if language == "tr":
-        return (
-            "Selfie'de belirgin bir yüz algılanamadı. Lütfen yüze odaklı, daha net ve önden çekilmiş bir fotoğraf dene."
-        )
-    return (
-        "No clear face could be detected in the selfie. Please try a sharper, front-facing photo."
-    )
-
-
 def _model_unavailable_message(language: str) -> str:
     if language == "tr":
         return "Yerel yüz duygu modeli hazır değil. Lütfen daha sonra tekrar dene."
@@ -75,12 +61,12 @@ def _analysis_explanation(language: str, emotion: str, confidence: float) -> str
     if language == "tr":
         return (
             "Selfie, yerelde çalışan yüz duygu modeli ile analiz edildi. "
-            f"Baskın duygu {emotion} olarak bulundu."
+            f"Baskın duygu {emotion} olarak bulundu. Güven skoru %{confidence_percent}."
         )
 
     return (
         "The selfie was analyzed with the local face emotion model. "
-        f"The dominant signal was {emotion}."
+        f"The dominant signal was {emotion} with {confidence_percent}% confidence."
     )
 
 
@@ -104,18 +90,27 @@ def _ensure_model_snapshot(language: str) -> Path:
 
     model_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        snapshot_download(
-            repo_id=_model_id(),
-            local_dir=str(model_dir),
-            allow_patterns=list(ALLOWED_MODEL_PATTERNS),
-        )
-    except Exception as exc:
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            print(f"Local face emotion model download started: {_model_id()} -> {model_dir} (attempt {attempt}/3)")
+            snapshot_download(
+                repo_id=_model_id(),
+                local_dir=str(model_dir),
+                allow_patterns=list(ALLOWED_MODEL_PATTERNS),
+                max_workers=1,
+            )
+            print(f"Local face emotion model download finished: {model_dir}")
+            break
+        except Exception as exc:
+            last_error = exc
+            print(f"Local face emotion model download failed on attempt {attempt}/3: {exc}")
+    else:
         raise LocalFaceEmotionError(
             _model_unavailable_message(language),
             503,
             "FACE_MODEL_UNAVAILABLE",
-        ) from exc
+        ) from last_error
 
     if not _bundle_ready(model_dir):
         raise LocalFaceEmotionError(
@@ -150,28 +145,7 @@ def _resolve_onnx_path(model_dir: Path, language: str) -> Path:
         ) from exc
 
 
-def _load_detectors(language: str) -> list[cv2.CascadeClassifier]:
-    detectors = []
-    for cascade_name in DEFAULT_CASCADE_FILES:
-        cascade_path = Path(cv2.data.haarcascades) / cascade_name
-        if not cascade_path.exists():
-            continue
-
-        detector = cv2.CascadeClassifier(str(cascade_path))
-        if not detector.empty():
-            detectors.append(detector)
-
-    if detectors:
-        return detectors
-
-    raise LocalFaceEmotionError(
-        _model_unavailable_message(language),
-        503,
-        "FACE_MODEL_UNAVAILABLE",
-    )
-
-
-def _load_resources(language: str) -> dict:
+def _load_resources(language: str) -> dict[str, Any]:
     global _RESOURCE_BUNDLE
 
     if _RESOURCE_BUNDLE is not None:
@@ -181,79 +155,46 @@ def _load_resources(language: str) -> dict:
         if _RESOURCE_BUNDLE is not None:
             return _RESOURCE_BUNDLE
 
-        model_dir = _ensure_model_snapshot(language)
-        config = _load_config(model_dir, language)
-        processor = AutoImageProcessor.from_pretrained(str(model_dir), local_files_only=True)
-        session = ort.InferenceSession(
-            str(_resolve_onnx_path(model_dir, language)),
-            providers=["CPUExecutionProvider"],
-        )
+        try:
+            model_dir = _ensure_model_snapshot(language)
+            config = _load_config(model_dir, language)
+            processor = AutoImageProcessor.from_pretrained(str(model_dir), local_files_only=True)
+            session = ort.InferenceSession(
+                str(_resolve_onnx_path(model_dir, language)),
+                providers=["CPUExecutionProvider"],
+            )
+        except LocalFaceEmotionError:
+            raise
+        except Exception as exc:
+            raise LocalFaceEmotionError(
+                _model_unavailable_message(language),
+                503,
+                "FACE_MODEL_UNAVAILABLE",
+            ) from exc
 
         _RESOURCE_BUNDLE = {
             "config": config,
             "processor": processor,
             "session": session,
-            "detectors": _load_detectors(language),
+            "model_used": MODEL_USED,
         }
         return _RESOURCE_BUNDLE
+
+
+def warmup_local_face_emotion_model(language: str = "en") -> dict[str, Any]:
+    normalized_language = _normalize_language(language)
+    resources = _load_resources(normalized_language)
+    return {
+        "model_used": resources["model_used"],
+        "model_id": _model_id(),
+        "model_dir": str(_model_dir()),
+    }
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:
     shifted = logits - np.max(logits)
     exp_values = np.exp(shifted)
     return exp_values / np.sum(exp_values)
-
-
-def _decode_image(image_base64: str, language: str) -> np.ndarray:
-    try:
-        image_bytes = base64.b64decode(image_base64, validate=True)
-    except (TypeError, ValueError) as exc:
-        raise LocalFaceEmotionError(_invalid_image_message(language), 400, "INVALID_IMAGE") from exc
-
-    image_buffer = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(image_buffer, cv2.IMREAD_COLOR)
-    if image is None:
-        raise LocalFaceEmotionError(_invalid_image_message(language), 400, "INVALID_IMAGE")
-
-    return image
-
-
-def _detect_face(image_bgr: np.ndarray, detectors: list[cv2.CascadeClassifier], language: str) -> np.ndarray:
-    grayscale = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    grayscale = cv2.equalizeHist(grayscale)
-
-    image_height, image_width = grayscale.shape[:2]
-    min_side = min(image_height, image_width)
-    min_size = max(48, min_side // 7)
-
-    detected_faces = ()
-    for detector in detectors:
-        detected_faces = detector.detectMultiScale(
-            grayscale,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(min_size, min_size),
-        )
-        if len(detected_faces) > 0:
-            break
-
-    if len(detected_faces) == 0:
-        raise LocalFaceEmotionError(
-            _face_not_detected_message(language),
-            400,
-            "FACE_NOT_DETECTED",
-        )
-
-    x, y, width, height = max(detected_faces, key=lambda face: face[2] * face[3])
-    margin_x = int(width * 0.18)
-    margin_y = int(height * 0.18)
-
-    x0 = max(0, x - margin_x)
-    y0 = max(0, y - margin_y)
-    x1 = min(image_width, x + width + margin_x)
-    y1 = min(image_height, y + height + margin_y)
-
-    return image_bgr[y0:y1, x0:x1]
 
 
 def _build_session_inputs(processor: AutoImageProcessor, session: ort.InferenceSession, face_crop: np.ndarray) -> dict:
@@ -269,9 +210,9 @@ def _build_session_inputs(processor: AutoImageProcessor, session: ort.InferenceS
 
         if input_value is None:
             raise LocalFaceEmotionError(
-                "Local face model input signature is unsupported.",
-                500,
-                "FACE_MODEL_INVALID",
+                _model_unavailable_message("en"),
+                503,
+                "FACE_MODEL_UNAVAILABLE",
             )
 
         session_inputs[session_input.name] = np.asarray(input_value, dtype=np.float32)
@@ -301,17 +242,29 @@ def analyze_face_emotion(
     mime_type: str | None = None,
     language: str = "en",
 ) -> dict:
-    del mime_type
-
     normalized_language = _normalize_language(language)
+    try:
+        face_result = validate_and_extract_face(image_base64, mime_type, normalized_language)
+    except ImageValidationError as exc:
+        raise LocalFaceEmotionError(exc.message, 400, exc.code) from exc
+
     resources = _load_resources(normalized_language)
-    face_crop = _detect_face(
-        _decode_image(image_base64, normalized_language),
-        resources["detectors"],
-        normalized_language,
-    )
-    session_inputs = _build_session_inputs(resources["processor"], resources["session"], face_crop)
-    outputs = resources["session"].run(None, session_inputs)
+    try:
+        session_inputs = _build_session_inputs(
+            resources["processor"],
+            resources["session"],
+            face_result.face_crop_bgr,
+        )
+        outputs = resources["session"].run(None, session_inputs)
+    except LocalFaceEmotionError:
+        raise
+    except Exception as exc:
+        raise LocalFaceEmotionError(
+            _model_unavailable_message(normalized_language),
+            503,
+            "FACE_MODEL_UNAVAILABLE",
+        ) from exc
+
     logits = np.asarray(outputs[0])[0]
     probabilities = _softmax(logits)
 
@@ -325,4 +278,8 @@ def analyze_face_emotion(
         "confidence": confidence,
         "explanation": _analysis_explanation(normalized_language, emotion, confidence),
         "raw_emotion": raw_label,
+        "face_area_ratio": face_result.face_area_ratio,
+        "face_short_side": face_result.face_short_side,
+        "bounding_box": face_result.bounding_box,
+        "model_used": resources["model_used"],
     }

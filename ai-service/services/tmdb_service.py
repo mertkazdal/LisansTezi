@@ -377,18 +377,34 @@ async def get_movie_recommendations(
     seed = _seed_value(user_id, date_bucket, normalized_emotion, analysis_text or compacted_context)
     excluded_ids = {int(item) for item in (excluded_movie_ids or []) if item is not None}
 
-    film_query_payload = await generate_film_search_queries(
-        normalized_emotion,
-        normalized_age_group,
-        normalized_survey_genres,
-        language,
-    )
+    provided_film_queries = [str(item).strip() for item in (queries or []) if str(item).strip()]
+    if provided_film_queries and len(provided_film_queries) >= 1:
+        film_query_payload = {
+            "query_emotion": provided_film_queries[0],
+            "query_genre": (
+                provided_film_queries[1]
+                if len(provided_film_queries) > 1
+                else provided_film_queries[0]
+            ),
+            "query_context": (
+                provided_film_queries[2]
+                if len(provided_film_queries) > 2
+                else provided_film_queries[0]
+            ),
+        }
+    else:
+        film_query_payload = await generate_film_search_queries(
+            normalized_emotion,
+            normalized_age_group,
+            normalized_survey_genres,
+            language,
+        )
     generated_queries = [
         film_query_payload.get("query_emotion", ""),
         film_query_payload.get("query_genre", ""),
         film_query_payload.get("query_context", ""),
     ]
-    search_queries = [item.strip() for item in [*(queries or []), *generated_queries] if str(item).strip()]
+    search_queries = [item.strip() for item in [*provided_film_queries, *generated_queries] if str(item).strip()]
     search_queries = list(dict.fromkeys(search_queries))[:3]
     query_hash = hashlib.sha256(json.dumps(search_queries, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
     cache_key = build_cache_key(

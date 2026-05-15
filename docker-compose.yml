@@ -17,6 +17,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: tezfinal-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - tezfinal_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   ai-service:
     build:
       context: .
@@ -25,7 +40,7 @@ services:
     environment:
       TEZFINAL_DEMO_MODE: ${TEZFINAL_DEMO_MODE:-false}
       AI_TEXT_PROVIDER: ${AI_TEXT_PROVIDER:-gemini}
-      IMAGE_EMOTION_PROVIDER: ${IMAGE_EMOTION_PROVIDER:-gemini}
+      IMAGE_EMOTION_PROVIDER: ${IMAGE_EMOTION_PROVIDER:-local}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL_NAME: ${GEMINI_MODEL_NAME:-gemini-3-flash-preview}
       GEMINI_RECHECK_API_KEY: ${GEMINI_RECHECK_API_KEY:-}
@@ -38,17 +53,21 @@ services:
       GEMINI_KEY_CONFLICT_2: ${GEMINI_KEY_CONFLICT_2:-}
       GEMINI_KEY_CONFLICT_3: ${GEMINI_KEY_CONFLICT_3:-}
       GEMINI_KEY_RECOMMENDATIONS: ${GEMINI_KEY_RECOMMENDATIONS:-}
-      GEMINI_KEY_FILM_QUERIES: ${GEMINI_KEY_FILM_QUERIES:-}
+      GEMINI_KEY_FILM_QUERIES: ${GEMINI_KEY_FILM_QUERIES:-${GEMINI_KEY_RECOMMENDATIONS:-}}
       GEMINI_KEY_PERSONALITY_UPDATE: ${GEMINI_KEY_PERSONALITY_UPDATE:-}
       GEMINI_KEY_COACH: ${GEMINI_KEY_COACH:-}
       GEMINI_KEY_AVATAR: ${GEMINI_KEY_AVATAR:-}
       LOCAL_FACE_MODEL_ID: ${LOCAL_FACE_MODEL_ID:-trpakov/vit-face-expression}
       LOCAL_FACE_MODEL_DIR: ${LOCAL_FACE_MODEL_DIR:-/opt/models/trpakov-vit-face-expression}
+      HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-300}
+      HF_HUB_ETAG_TIMEOUT: ${HF_HUB_ETAG_TIMEOUT:-60}
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-http://localhost:5000/api/spotify/callback}
       TMDB_API_KEY: ${TMDB_API_KEY:-}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      AI_ALLOWED_ORIGINS: ${AI_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "8000:8000"
     healthcheck:
@@ -56,6 +75,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   api-gateway:
@@ -82,7 +104,7 @@ services:
       GEMINI_KEY_CONFLICT_2: ${GEMINI_KEY_CONFLICT_2:-}
       GEMINI_KEY_CONFLICT_3: ${GEMINI_KEY_CONFLICT_3:-}
       GEMINI_KEY_RECOMMENDATIONS: ${GEMINI_KEY_RECOMMENDATIONS:-}
-      GEMINI_KEY_FILM_QUERIES: ${GEMINI_KEY_FILM_QUERIES:-}
+      GEMINI_KEY_FILM_QUERIES: ${GEMINI_KEY_FILM_QUERIES:-${GEMINI_KEY_RECOMMENDATIONS:-}}
       GEMINI_KEY_PERSONALITY_UPDATE: ${GEMINI_KEY_PERSONALITY_UPDATE:-}
       GEMINI_KEY_COACH: ${GEMINI_KEY_COACH:-}
       GEMINI_KEY_AVATAR: ${GEMINI_KEY_AVATAR:-}
@@ -91,12 +113,16 @@ services:
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-http://localhost:5000/api/spotify/callback}
       TMDB_API_KEY: ${TMDB_API_KEY:-}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+      REDIS_CONNECTION_STRING: ${REDIS_CONNECTION_STRING:-redis:6379}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
       APPLY_MIGRATIONS_ON_STARTUP: ${APPLY_MIGRATIONS_ON_STARTUP:-true}
       ASPNETCORE_URLS: http://+:5000
     ports:
       - "5000:5000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       ai-service:
         condition: service_healthy
@@ -117,3 +143,4 @@ services:
 
 volumes:
   tezfinal_postgres_data:
+  tezfinal_redis_data:

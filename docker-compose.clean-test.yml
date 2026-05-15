@@ -1,0 +1,33 @@
+services:
+  postgres:
+    container_name: tezfinal-clean-db
+    ports: !override
+      - "15432:5432"
+    volumes: !override
+      - tezfinal_clean_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    container_name: tezfinal-clean-redis
+    ports: !override
+      - "16379:6379"
+    volumes: !override
+      - tezfinal_clean_redis_data:/data
+
+  ai-service:
+    container_name: tezfinal-clean-ai
+    ports: !override
+      - "18000:8000"
+
+  api-gateway:
+    container_name: tezfinal-clean-api
+    ports: !override
+      - "15000:5000"
+
+  client:
+    container_name: tezfinal-clean-client
+    ports: !override
+      - "13000:80"
+
+volumes:
+  tezfinal_clean_postgres_data:
+  tezfinal_clean_redis_data:

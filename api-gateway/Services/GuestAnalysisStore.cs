@@ -77,11 +77,23 @@ public class GuestAnalysisStore
     private static readonly TimeSpan UsageTtl = TimeSpan.FromHours(12);
     private readonly ConcurrentDictionary<Guid, GuestAnalysisRecord> _records = new();
     private readonly ConcurrentDictionary<string, GuestUsageState> _usage = new();
+    private readonly RedisCacheService _redis;
     private long _lastCleanupTicks;
+
+    public GuestAnalysisStore(RedisCacheService redis)
+    {
+        _redis = redis;
+    }
 
     public int GetCompletedAnalysisCount(string actorKey)
     {
         CleanupExpiredEntries();
+
+        if (TryReadUsage(actorKey, out var redisState))
+        {
+            return redisState.Count;
+        }
+
         return _usage.TryGetValue(actorKey, out var state) && state.ExpiresAt > DateTimeOffset.UtcNow
             ? state.Count
             : 0;
@@ -90,14 +102,13 @@ public class GuestAnalysisStore
     public int RegisterCompletedAnalysis(string actorKey)
     {
         CleanupExpiredEntries();
-        var state = _usage.AddOrUpdate(
-            actorKey,
-            _ => new GuestUsageState(1, DateTimeOffset.UtcNow.Add(UsageTtl)),
-            (_, existing) =>
-            {
-                var currentCount = existing.ExpiresAt <= DateTimeOffset.UtcNow ? 0 : existing.Count;
-                return new GuestUsageState(currentCount + 1, DateTimeOffset.UtcNow.Add(UsageTtl));
-            });
+
+        var current = TryReadUsage(actorKey, out var redisState) ? redisState : null;
+        var currentCount = current?.ExpiresAt > DateTimeOffset.UtcNow ? current.Count : 0;
+        var state = new GuestUsageState(currentCount + 1, DateTimeOffset.UtcNow.Add(UsageTtl));
+
+        _usage[actorKey] = state;
+        StoreUsage(actorKey, state);
 
         return state.Count;
     }
@@ -106,6 +117,7 @@ public class GuestAnalysisStore
     {
         CleanupExpiredEntries();
         _records[record.HistoryId] = record;
+        StoreRecord(record);
     }
 
     public bool TryGet(Guid historyId, string actorKey, string? guestSessionId, out GuestAnalysisRecord? record)
@@ -113,7 +125,8 @@ public class GuestAnalysisStore
         CleanupExpiredEntries();
         record = null;
 
-        if (!_records.TryGetValue(historyId, out var candidate))
+        if (!TryReadRecord(historyId, out var candidate) &&
+            !_records.TryGetValue(historyId, out candidate))
         {
             return false;
         }
@@ -156,34 +169,27 @@ public class GuestAnalysisStore
     {
         feedback = null;
         var normalizedSession = NormalizeSession(guestSessionId);
-
-        while (true)
+        if (!TryGet(historyId, actorKey, normalizedSession, out var current) || current == null)
         {
-            if (!TryGet(historyId, actorKey, normalizedSession, out var current) || current == null)
-            {
-                return false;
-            }
-
-            var nextFeedback = new FeedbackResponse
-            {
-                Id = current.Feedback?.Id ?? Guid.NewGuid(),
-                HistoryId = historyId,
-                OverallRating = request.OverallRating,
-                AnalysisAccuracyRating = request.AnalysisAccuracyRating,
-                RecommendationQualityRating = request.RecommendationQualityRating,
-                Helpful = request.Helpful,
-                WouldReuse = request.WouldReuse,
-                Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim(),
-                CreatedAt = DateTime.UtcNow
-            };
-            var next = current with { Feedback = nextFeedback };
-
-            if (_records.TryUpdate(historyId, next, current))
-            {
-                feedback = nextFeedback;
-                return true;
-            }
+            return false;
         }
+
+        var nextFeedback = new FeedbackResponse
+        {
+            Id = current.Feedback?.Id ?? Guid.NewGuid(),
+            HistoryId = historyId,
+            OverallRating = request.OverallRating,
+            AnalysisAccuracyRating = request.AnalysisAccuracyRating,
+            RecommendationQualityRating = request.RecommendationQualityRating,
+            Helpful = request.Helpful,
+            WouldReuse = request.WouldReuse,
+            Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim(),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        Save(current with { Feedback = nextFeedback });
+        feedback = nextFeedback;
+        return true;
     }
 
     public GuestAnalysisRecord CreateRecord(
@@ -253,6 +259,84 @@ public class GuestAnalysisStore
         var normalized = guestSessionId?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
+
+    private bool TryReadUsage(string actorKey, out GuestUsageState state)
+    {
+        state = null!;
+        if (!_redis.TryGetString(UsageKey(actorKey), out var payload) ||
+            string.IsNullOrWhiteSpace(payload))
+        {
+            return false;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<GuestUsageState>(payload);
+            if (parsed is null || parsed.ExpiresAt <= DateTimeOffset.UtcNow)
+            {
+                _redis.TryDelete(UsageKey(actorKey));
+                return false;
+            }
+
+            _usage[actorKey] = parsed;
+            state = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            _redis.TryDelete(UsageKey(actorKey));
+            return false;
+        }
+    }
+
+    private void StoreUsage(string actorKey, GuestUsageState state)
+    {
+        _redis.TrySetString(UsageKey(actorKey), JsonSerializer.Serialize(state), UsageTtl);
+    }
+
+    private bool TryReadRecord(Guid historyId, out GuestAnalysisRecord record)
+    {
+        record = null!;
+        if (!_redis.TryGetString(RecordKey(historyId), out var payload) ||
+            string.IsNullOrWhiteSpace(payload))
+        {
+            return false;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<GuestAnalysisRecord>(payload);
+            if (parsed is null || parsed.ExpiresAt <= DateTimeOffset.UtcNow)
+            {
+                _redis.TryDelete(RecordKey(historyId));
+                return false;
+            }
+
+            _records[historyId] = parsed;
+            record = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            _redis.TryDelete(RecordKey(historyId));
+            return false;
+        }
+    }
+
+    private void StoreRecord(GuestAnalysisRecord record)
+    {
+        var ttl = record.ExpiresAt - DateTimeOffset.UtcNow;
+        if (ttl <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        _redis.TrySetString(RecordKey(record.HistoryId), JsonSerializer.Serialize(record), ttl);
+    }
+
+    private static string UsageKey(string actorKey) => $"guest-usage:{actorKey}";
+
+    private static string RecordKey(Guid historyId) => $"guest-record:{historyId:N}";
 
     private sealed record GuestUsageState(int Count, DateTimeOffset ExpiresAt);
 }

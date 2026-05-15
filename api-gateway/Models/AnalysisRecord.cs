@@ -13,6 +13,9 @@ public class AnalysisRecord
     [Column("user_id")]
     public Guid? UserId { get; set; }
 
+    [Column("emotion_history_id")]
+    public Guid? EmotionHistoryId { get; set; }
+
     [Column("session_id")]
     [MaxLength(128)]
     public string? SessionId { get; set; }
@@ -65,9 +68,17 @@ public class AnalysisRecord
     [MaxLength(80)]
     public string? ShareToken { get; set; }
 
+    [Column("share_token_expires_at")]
+    public DateTime? ShareTokenExpiresAt { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [ForeignKey("UserId")]
     public User? User { get; set; }
+
+    [ForeignKey("EmotionHistoryId")]
+    public EmotionHistory? EmotionHistory { get; set; }
+
+    public ICollection<SavedRecommendation> SavedRecommendations { get; set; } = new List<SavedRecommendation>();
 }

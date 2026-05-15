@@ -94,6 +94,7 @@ def _map_tracks(items: list[dict]) -> list[dict]:
         album_images = item.get("album", {}).get("images", [])
         tracks.append(
             {
+                "spotify_id": item.get("id"),
                 "title": item.get("name", "Unknown"),
                 "artist": ", ".join(artist.get("name", "") for artist in item.get("artists", [])),
                 "album": item.get("album", {}).get("name", "Unknown"),
@@ -108,25 +109,64 @@ def _map_tracks(items: list[dict]) -> list[dict]:
 
 async def _search_tracks(token: str, query: str) -> list[dict]:
     async with httpx.AsyncClient(timeout=default_http_timeout(10.0)) as client:
+        params = {
+            "q": query,
+            "type": "track",
+            "limit": 10,
+            "market": "TR",
+        }
         response = await client.get(
             SPOTIFY_SEARCH_URL,
             headers={"Authorization": f"Bearer {token}"},
-            params={
-                "q": query,
-                "type": "track",
-                "limit": 8,
-                "market": "US",
-            },
+            params=params,
         )
         response.raise_for_status()
-        data = response.json()
-    return data.get("tracks", {}).get("items", [])
+        items = response.json().get("tracks", {}).get("items", [])
+
+        if len(items) < 5:
+            params["market"] = "US"
+            response2 = await client.get(
+                SPOTIFY_SEARCH_URL,
+                headers={"Authorization": f"Bearer {token}"},
+                params=params,
+            )
+            response2.raise_for_status()
+            us_items = response2.json().get("tracks", {}).get("items", [])
+            existing_ids = {track.get("id") for track in items}
+            for track in us_items:
+                track_id = track.get("id")
+                if track_id not in existing_ids:
+                    items.append(track)
+                    existing_ids.add(track_id)
+
+    clean_items = [track for track in items if not track.get("explicit", False)]
+    return clean_items if len(clean_items) >= 3 else items
+
+
+def _age_sort_spotify_tracks(tracks: list, age_group: str | None) -> list:
+    if not age_group or age_group in ("young_adult", "adult"):
+        return tracks
+
+    def sort_key(track):
+        try:
+            release_date = track.get("album", {}).get("release_date") or "2020-01-01"
+            year = int(str(release_date)[:4])
+        except (ValueError, TypeError):
+            year = 2020
+        if age_group == "mature":
+            return year
+        if age_group == "teen":
+            return -year
+        return 0
+
+    return sorted(tracks, key=sort_key)
 
 
 async def get_music_recommendations(
     emotion: str,
     context: str | None = None,
     queries: list[str] | None = None,
+    age_group: str | None = None,
 ) -> list:
     normalized_emotion = normalize_emotion_key(emotion, "calm")
     compacted_context = compact_context(context, max_chars=180)
@@ -137,6 +177,7 @@ async def get_music_recommendations(
         {
             "emotion": normalized_emotion,
             "context": compacted_context,
+            "age_group": age_group,
         },
     )
     cached_tracks = await SPOTIFY_CACHE.get(cache_key)
@@ -165,6 +206,7 @@ async def get_music_recommendations(
             if len(items) >= 8:
                 break
 
+        items = _age_sort_spotify_tracks(items, age_group)
         tracks = _map_tracks(items)
         if tracks:
             await SPOTIFY_CACHE.set(cache_key, tracks)

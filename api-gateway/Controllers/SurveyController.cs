@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,8 @@ namespace MoodLens.ApiGateway.Controllers;
 [Route("api/survey")]
 public class SurveyController : ControllerBase
 {
+    private const int GuestAnalysisLimit = 3;
+    private const string GuestSessionCookieName = "moodlens_guest_session";
     private readonly AppDbContext _db;
     private readonly AiServiceClient _aiClient;
     private static readonly HashSet<string> AllowedAgeGroups = new(StringComparer.OrdinalIgnoreCase)
@@ -71,13 +74,23 @@ public class SurveyController : ControllerBase
         }
 
         var personality = await _aiClient.DetectPersonalityAsync(answers, language);
+        var personalityJson = BuildBigFiveJson(personality);
         var userId = GetUserId();
         if (userId == null)
         {
+            var guestSession = ResolveGuestSessionState(request.GuestSessionId);
+            WriteGuestSessionStateCookie(guestSession with
+            {
+                SurveyCompleted = true,
+                PersonalityJson = personalityJson,
+                AgeGroup = ageGroup
+            });
+
             return Ok(new
             {
                 saved = true,
                 persisted = false,
+                guestSessionId = guestSession.SessionId,
                 message = "Guest survey answers were accepted for this session."
             });
         }
@@ -96,7 +109,7 @@ public class SurveyController : ControllerBase
             _db.UserPersonalityProfiles.Add(profile);
         }
 
-        profile.BigFiveJson = BuildBigFiveJson(personality);
+        profile.BigFiveJson = personalityJson;
         profile.MbtiType = GetOptionalString(personality, "mbti");
         profile.AgeGroup = ageGroup;
         profile.RawSurveyAnswers = JsonSerializer.Serialize(answers);
@@ -164,6 +177,73 @@ public class SurveyController : ControllerBase
         return Guid.TryParse(claim, out var id) ? id : null;
     }
 
+    private GuestSessionState ResolveGuestSessionState(string? bodyGuestSessionId)
+    {
+        var cookieState = ReadGuestSessionStateCookie();
+        var candidate = bodyGuestSessionId;
+
+        if (string.IsNullOrWhiteSpace(candidate) &&
+            Request.Headers.TryGetValue("X-Guest-Session-Id", out var headerGuestSessionId))
+        {
+            candidate = headerGuestSessionId.ToString();
+        }
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            candidate = cookieState?.SessionId;
+        }
+
+        var sessionId = string.IsNullOrWhiteSpace(candidate)
+            ? Guid.NewGuid().ToString("N")
+            : candidate.Trim();
+        var sameCookieSession = cookieState != null &&
+            string.Equals(cookieState.SessionId, sessionId, StringComparison.Ordinal);
+
+        return new GuestSessionState(
+            sessionId,
+            sameCookieSession ? Math.Clamp(cookieState!.CompletedAnalyses, 0, GuestAnalysisLimit) : 0,
+            sameCookieSession && cookieState!.SurveyCompleted,
+            sameCookieSession ? cookieState!.PersonalityJson : null,
+            sameCookieSession ? cookieState!.AgeGroup : null
+        );
+    }
+
+    private GuestSessionState? ReadGuestSessionStateCookie()
+    {
+        if (!Request.Cookies.TryGetValue(GuestSessionCookieName, out var rawCookie) ||
+            string.IsNullOrWhiteSpace(rawCookie))
+        {
+            return null;
+        }
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(rawCookie));
+            return JsonSerializer.Deserialize<GuestSessionState>(json);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void WriteGuestSessionStateCookie(GuestSessionState state)
+    {
+        var json = JsonSerializer.Serialize(state);
+        var value = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        Response.Cookies.Append(
+            GuestSessionCookieName,
+            value,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                IsEssential = true,
+                SameSite = SameSiteMode.Lax,
+                Secure = Request.IsHttps
+            }
+        );
+    }
+
     private static string? GetOptionalString(JsonElement element, string propertyName)
     {
         return element.TryGetProperty(propertyName, out var property) &&
@@ -180,4 +260,12 @@ public class SurveyController : ControllerBase
             ? value
             : null;
     }
+
+    private sealed record GuestSessionState(
+        string SessionId,
+        int CompletedAnalyses,
+        bool SurveyCompleted = false,
+        string? PersonalityJson = null,
+        string? AgeGroup = null
+    );
 }

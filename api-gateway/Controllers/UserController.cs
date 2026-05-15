@@ -138,6 +138,22 @@ public class UserController : ControllerBase
         var deletedRecommendations = historyIds.Count == 0
             ? 0
             : await _db.Recommendations.CountAsync(r => historyIds.Contains(r.HistoryId));
+        var deletedAnalysisRecords = await _db.AnalysisRecords
+            .Where(record => record.UserId == userId.Value)
+            .CountAsync();
+        var deletedSavedRecommendations = await _db.SavedRecommendations
+            .Where(item => item.UserId == userId.Value)
+            .CountAsync();
+        var deletedFeedback = await _db.AnalysisFeedback
+            .Where(item => item.UserId == userId.Value)
+            .CountAsync();
+
+        await _db.AnalysisRecords
+            .Where(record => record.UserId == userId.Value)
+            .ExecuteDeleteAsync();
+        await _db.AnalysisFeedback
+            .Where(item => item.UserId == userId.Value)
+            .ExecuteDeleteAsync();
 
         _db.Users.Remove(user);
         await _db.SaveChangesAsync();
@@ -146,7 +162,10 @@ public class UserController : ControllerBase
         {
             message = "Your account and related analysis data have been deleted.",
             deletedAnalyses = historyIds.Count,
-            deletedRecommendations
+            deletedRecommendations,
+            deletedAnalysisRecords,
+            deletedSavedRecommendations,
+            deletedFeedback
         });
     }
 

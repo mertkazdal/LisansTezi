@@ -120,6 +120,10 @@ namespace MoodLens.ApiGateway.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("emotion_confidence");
 
+                    b.Property<Guid?>("EmotionHistoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("emotion_history_id");
+
                     b.Property<string>("EmotionResult")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -170,6 +174,10 @@ namespace MoodLens.ApiGateway.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("share_token");
 
+                    b.Property<DateTime?>("ShareTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("share_token_expires_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -195,11 +203,17 @@ namespace MoodLens.ApiGateway.Migrations
 
                     b.HasIndex("CreatedAt");
 
+                    b.HasIndex("EmotionHistoryId")
+                        .IsUnique()
+                        .HasFilter("\"emotion_history_id\" IS NOT NULL");
+
                     b.HasIndex("SessionId");
 
                     b.HasIndex("ShareToken")
                         .IsUnique()
                         .HasFilter("\"share_token\" IS NOT NULL");
+
+                    b.HasIndex("ShareTokenExpiresAt");
 
                     b.HasIndex("UserId");
 
@@ -368,6 +382,68 @@ namespace MoodLens.ApiGateway.Migrations
                     b.ToTable("recommendations", t =>
                         {
                             t.HasCheckConstraint("CK_recommendations_category", "\"category\" IN ('music', 'movie', 'book', 'advice')");
+                        });
+                });
+
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.SavedRecommendation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid?>("AnalysisRecordId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("analysis_record_id");
+
+                    b.Property<string>("ItemData")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("item_data")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("ItemId")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("ItemTitle")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("item_title");
+
+                    b.Property<string>("ItemType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("item_type");
+
+                    b.Property<DateTime>("SavedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("saved_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AnalysisRecordId");
+
+                    b.HasIndex("UserId", "ItemType");
+
+                    b.HasIndex("UserId", "ItemType", "ItemId")
+                        .IsUnique();
+
+                    b.ToTable("saved_recommendations", t =>
+                        {
+                            t.HasCheckConstraint("CK_saved_recommendations_item_type", "\"item_type\" IN ('music', 'film', 'book')");
                         });
                 });
 
@@ -600,10 +676,17 @@ namespace MoodLens.ApiGateway.Migrations
 
             modelBuilder.Entity("MoodLens.ApiGateway.Models.AnalysisRecord", b =>
                 {
+                    b.HasOne("MoodLens.ApiGateway.Models.EmotionHistory", "EmotionHistory")
+                        .WithOne()
+                        .HasForeignKey("MoodLens.ApiGateway.Models.AnalysisRecord", "EmotionHistoryId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("MoodLens.ApiGateway.Models.User", "User")
                         .WithMany("AnalysisRecords")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("EmotionHistory");
 
                     b.Navigation("User");
                 });
@@ -640,6 +723,24 @@ namespace MoodLens.ApiGateway.Migrations
                     b.Navigation("EmotionHistory");
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.SavedRecommendation", b =>
+                {
+                    b.HasOne("MoodLens.ApiGateway.Models.AnalysisRecord", "AnalysisRecord")
+                        .WithMany("SavedRecommendations")
+                        .HasForeignKey("AnalysisRecordId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MoodLens.ApiGateway.Models.User", "User")
+                        .WithMany("SavedRecommendations")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AnalysisRecord");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.UserMediaLog", b =>
                 {
                     b.HasOne("MoodLens.ApiGateway.Models.User", "User")
@@ -662,6 +763,11 @@ namespace MoodLens.ApiGateway.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MoodLens.ApiGateway.Models.AnalysisRecord", b =>
+                {
+                    b.Navigation("SavedRecommendations");
+                });
+
             modelBuilder.Entity("MoodLens.ApiGateway.Models.EmotionHistory", b =>
                 {
                     b.Navigation("FeedbackEntries");
@@ -682,6 +788,8 @@ namespace MoodLens.ApiGateway.Migrations
                     b.Navigation("PersonalityProfile");
 
                     b.Navigation("PersonalityUpdateLogs");
+
+                    b.Navigation("SavedRecommendations");
                 });
 #pragma warning restore 612, 618
         }

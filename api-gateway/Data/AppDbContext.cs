@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<AnalysisRecord> AnalysisRecords { get; set; } = null!;
     public DbSet<PersonalityUpdateLog> PersonalityUpdateLogs { get; set; } = null!;
     public DbSet<UserMediaLog> UserMediaLogs { get; set; } = null!;
+    public DbSet<SavedRecommendation> SavedRecommendations { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -144,9 +145,13 @@ public class AppDbContext : DbContext
                 );
             });
             entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.EmotionHistoryId)
+                  .IsUnique()
+                  .HasFilter("\"emotion_history_id\" IS NOT NULL");
             entity.HasIndex(e => e.SessionId);
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.ShareToken).IsUnique().HasFilter("\"share_token\" IS NOT NULL");
+            entity.HasIndex(e => e.ShareTokenExpiresAt);
             entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(e => e.ConflictDetected).HasDefaultValue(false);
             entity.Property(e => e.RecommendationsJson).HasDefaultValueSql("'{}'::jsonb");
@@ -157,6 +162,10 @@ public class AppDbContext : DbContext
                   .WithMany(u => u.AnalysisRecords)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.EmotionHistory)
+                  .WithOne()
+                  .HasForeignKey<AnalysisRecord>(e => e.EmotionHistoryId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PersonalityUpdateLog>(entity =>
@@ -188,6 +197,30 @@ public class AppDbContext : DbContext
                   .WithMany(u => u.MediaLogs)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SavedRecommendation>(entity =>
+        {
+            entity.ToTable(tableBuilder =>
+            {
+                tableBuilder.HasCheckConstraint(
+                    "CK_saved_recommendations_item_type",
+                    "\"item_type\" IN ('music', 'film', 'book')"
+                );
+            });
+            entity.HasIndex(e => new { e.UserId, e.ItemType, e.ItemId }).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.ItemType });
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.ItemData).HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.SavedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.SavedRecommendations)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.AnalysisRecord)
+                  .WithMany(record => record.SavedRecommendations)
+                  .HasForeignKey(e => e.AnalysisRecordId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

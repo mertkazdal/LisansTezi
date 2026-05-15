@@ -3855,20 +3855,21 @@ body,
 }
 
 .app-page-tone .focus-studio-dialog {
-  --studio-bg: #08111f;
-  --studio-surface: rgba(15, 23, 42, 0.94);
-  --studio-surface-soft: rgba(30, 41, 59, 0.72);
-  --studio-surface-muted: rgba(51, 65, 85, 0.46);
-  --studio-border: rgba(148, 163, 184, 0.24);
-  --studio-border-strong: rgba(125, 211, 252, 0.32);
-  --studio-text: #f8fafc;
-  --studio-muted: #a8b3c7;
-  --studio-accent: #14b8a6;
-  --studio-accent-rgb: 20 184 166;
-  --studio-blue: #38bdf8;
+  --studio-bg: color-mix(in srgb, var(--theme-surface) 88%, #020617 12%);
+  --studio-surface: color-mix(in srgb, var(--theme-surface-alt) 92%, transparent);
+  --studio-surface-soft: color-mix(in srgb, var(--theme-surface-alt) 76%, transparent);
+  --studio-surface-muted: color-mix(in srgb, var(--theme-border) 42%, transparent);
+  --studio-border: color-mix(in srgb, var(--theme-border) 72%, transparent);
+  --studio-border-strong: color-mix(in srgb, var(--theme-primary) 44%, var(--theme-border) 56%);
+  --studio-text: var(--theme-text);
+  --studio-muted: var(--theme-text-muted);
+  --studio-accent: var(--theme-primary);
+  --studio-accent-rgb: var(--theme-primary-rgb);
+  --studio-on-accent: var(--theme-primary-foreground);
+  --studio-blue: color-mix(in srgb, var(--theme-primary-hover) 72%, var(--theme-text) 28%);
   display: flex;
-  width: min(96vw, 580px);
-  height: auto;
+  width: min(96vw, 1040px);
+  height: min(92svh, 790px);
   max-height: calc(100svh - 1rem);
   flex-direction: column;
   overflow: hidden;
@@ -3876,8 +3877,8 @@ body,
   border-radius: 1.15rem;
   background:
     radial-gradient(circle at 13% 0%, rgb(var(--studio-accent-rgb) / 0.22), transparent 24rem),
-    radial-gradient(circle at 102% 13%, rgba(56, 189, 248, 0.16), transparent 25rem),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), var(--studio-bg));
+    radial-gradient(circle at 102% 13%, rgb(var(--studio-accent-rgb) / 0.12), transparent 25rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-surface-alt) 96%, transparent), var(--studio-bg));
   box-shadow: 0 34px 90px rgb(2 6 23 / 0.44);
   color: var(--studio-text);
   backdrop-filter: blur(22px);
@@ -3891,7 +3892,7 @@ body,
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid var(--studio-border);
-  background: rgba(15, 23, 42, 0.82);
+  background: color-mix(in srgb, var(--studio-surface) 86%, transparent);
   padding: 0.85rem 1rem;
 }
 
@@ -3909,10 +3910,10 @@ body,
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(45, 212, 191, 0.35);
+  border: 1px solid color-mix(in srgb, var(--studio-accent) 45%, var(--studio-border) 55%);
   border-radius: 0.5rem;
-  background: rgba(20, 184, 166, 0.15);
-  color: #5eead4;
+  background: rgb(var(--studio-accent-rgb) / 0.15);
+  color: color-mix(in srgb, var(--studio-accent) 72%, var(--studio-text) 28%);
   font-size: 1rem;
   font-weight: 800;
   line-height: 1;
@@ -3921,10 +3922,10 @@ body,
 .focus-studio-kicker {
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(45, 212, 191, 0.34);
+  border: 1px solid color-mix(in srgb, var(--studio-accent) 44%, var(--studio-border) 56%);
   border-radius: 0.55rem;
-  background: rgba(20, 184, 166, 0.12);
-  color: #99f6e4;
+  background: rgb(var(--studio-accent-rgb) / 0.12);
+  color: color-mix(in srgb, var(--studio-accent) 64%, var(--studio-text) 36%);
   font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.14em;
@@ -3971,15 +3972,16 @@ body,
 }
 
 .focus-studio-close:hover {
-  border-color: rgba(45, 212, 191, 0.46);
-  background: rgba(20, 184, 166, 0.13);
+  border-color: color-mix(in srgb, var(--studio-accent) 52%, var(--studio-border) 48%);
+  background: rgb(var(--studio-accent-rgb) / 0.13);
   transform: translateY(-1px);
 }
 
 .focus-studio-body {
   min-height: 0;
   flex: 1 1 auto;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 1rem;
 }
 
@@ -4027,9 +4029,9 @@ body,
 }
 
 .focus-studio-body::-webkit-scrollbar-thumb {
-  border: 0.18rem solid rgba(15, 23, 42, 0.72);
+  border: 0.18rem solid color-mix(in srgb, var(--studio-bg) 72%, transparent);
   border-radius: 999px;
-  background: rgba(45, 212, 191, 0.58);
+  background: rgb(var(--studio-accent-rgb) / 0.58);
 }
 
 .focus-studio-grid {
@@ -4676,18 +4678,18 @@ body,
 .focus-studio-dialog .studio-context-pill,
 .focus-studio-dialog .studio-secondary-action,
 .focus-studio-dialog .studio-upload-mark {
-  color: #99f6e4;
+  color: color-mix(in srgb, var(--studio-accent) 64%, var(--studio-text) 36%);
 }
 
 .focus-studio-dialog .studio-context-pill,
 .focus-studio-dialog .studio-secondary-action {
-  border-color: rgba(45, 212, 191, 0.32);
-  background: rgba(20, 184, 166, 0.1);
+  border-color: color-mix(in srgb, var(--studio-accent) 34%, var(--studio-border) 66%);
+  background: rgb(var(--studio-accent-rgb) / 0.1);
 }
 
 .focus-studio-dialog .studio-secondary-action:hover {
-  border-color: rgba(45, 212, 191, 0.5);
-  background: rgba(20, 184, 166, 0.16);
+  border-color: color-mix(in srgb, var(--studio-accent) 52%, var(--studio-border) 48%);
+  background: rgb(var(--studio-accent-rgb) / 0.16);
 }
 
 .focus-studio-dialog .studio-age-strip,
@@ -4707,7 +4709,7 @@ body,
 
 .focus-studio-dialog .studio-age-input:focus,
 .focus-studio-dialog .studio-textarea:focus {
-  border-color: rgba(45, 212, 191, 0.58);
+  border-color: color-mix(in srgb, var(--studio-accent) 58%, var(--studio-border) 42%);
   box-shadow: 0 0 0 4px rgb(var(--studio-accent-rgb) / 0.14);
 }
 
@@ -4724,7 +4726,7 @@ body,
 }
 
 .focus-studio-dialog .studio-upload-zone {
-  border-color: rgba(45, 212, 191, 0.3);
+  border-color: color-mix(in srgb, var(--studio-accent) 34%, var(--studio-border) 66%);
   background:
     linear-gradient(160deg, rgb(var(--studio-accent-rgb) / 0.11), transparent 58%),
     rgba(15, 23, 42, 0.82);
@@ -4732,15 +4734,15 @@ body,
 
 .focus-studio-dialog .studio-upload-zone:hover,
 .focus-studio-dialog .studio-upload-zone.is-dragging {
-  border-color: rgba(45, 212, 191, 0.55);
+  border-color: color-mix(in srgb, var(--studio-accent) 58%, var(--studio-border) 42%);
   background:
     linear-gradient(160deg, rgb(var(--studio-accent-rgb) / 0.16), transparent 58%),
     rgba(30, 41, 59, 0.86);
 }
 
 .focus-studio-dialog .studio-upload-mark {
-  border-color: rgba(45, 212, 191, 0.38);
-  background: rgba(20, 184, 166, 0.14);
+  border-color: color-mix(in srgb, var(--studio-accent) 42%, var(--studio-border) 58%);
+  background: rgb(var(--studio-accent-rgb) / 0.14);
 }
 
 .focus-studio-dialog .studio-file-types span {
@@ -4764,9 +4766,9 @@ body,
 }
 
 .focus-studio-dialog .studio-check-item > span.is-done {
-  border-color: rgba(45, 212, 191, 0.44);
-  background: rgba(20, 184, 166, 0.14);
-  color: #5eead4;
+  border-color: color-mix(in srgb, var(--studio-accent) 48%, var(--studio-border) 52%);
+  background: rgb(var(--studio-accent-rgb) / 0.14);
+  color: color-mix(in srgb, var(--studio-accent) 72%, var(--studio-text) 28%);
 }
 
 .focus-studio-dialog .focus-studio-footer {
@@ -4775,10 +4777,10 @@ body,
 }
 
 .focus-studio-dialog .focus-studio-submit {
-  border: 1px solid rgba(45, 212, 191, 0.38) !important;
-  background: linear-gradient(135deg, #14b8a6, #0ea5e9) !important;
-  color: #f8fafc !important;
-  box-shadow: 0 16px 38px rgba(20, 184, 166, 0.18) !important;
+  border: 1px solid color-mix(in srgb, var(--studio-accent) 42%, var(--studio-border) 58%) !important;
+  background: linear-gradient(135deg, var(--studio-accent), var(--theme-primary-hover)) !important;
+  color: var(--studio-on-accent) !important;
+  box-shadow: 0 16px 38px rgb(var(--studio-accent-rgb) / 0.18) !important;
 }
 
 .focus-studio-dialog .focus-studio-submit:disabled {

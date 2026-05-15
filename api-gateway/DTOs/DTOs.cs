@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace MoodLens.ApiGateway.DTOs;
@@ -34,6 +35,7 @@ public class PersonalitySurveySubmitRequest
 {
     public Dictionary<int, int> Answers { get; set; } = new();
     public string? AgeGroup { get; set; }
+    public string? GuestSessionId { get; set; }
 }
 
 public class LoginRequest
@@ -95,6 +97,24 @@ public class RecommendationResponse
     public List<object> Movies { get; set; } = new();
     public List<object> Books { get; set; } = new();
     public List<object> LifeAdvice { get; set; } = new();
+}
+
+public class SaveRecommendationRequest
+{
+    [JsonPropertyName("analysis_record_id")]
+    public Guid? AnalysisRecordId { get; set; }
+
+    [JsonPropertyName("item_type")]
+    public string ItemType { get; set; } = string.Empty;
+
+    [JsonPropertyName("item_id")]
+    public string ItemId { get; set; } = string.Empty;
+
+    [JsonPropertyName("item_title")]
+    public string ItemTitle { get; set; } = string.Empty;
+
+    [JsonPropertyName("item_data")]
+    public JsonElement ItemData { get; set; }
 }
 
 public class FeedbackRequest

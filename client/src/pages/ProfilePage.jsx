@@ -245,6 +245,19 @@ export function ProfilePage() {
                 spotifyError={spotifyError}
                 mostFrequentEmotion={mostFrequentEmotion}
                 onOpenSettings={() => setShowSettingsModal(true)}
+                deleteAccountNode={profile?.canDeleteAccount ? (
+                  <DangerZone
+                    embedded
+                    showDeleteConfirm={showDeleteConfirm}
+                    setShowDeleteConfirm={setShowDeleteConfirm}
+                    deleteText={deleteText}
+                    setDeleteText={setDeleteText}
+                    deleteConfirmationText={deleteConfirmationText}
+                    isDeleting={isDeleting}
+                    onDelete={handleDeleteAccount}
+                    t={t}
+                  />
+                ) : null}
                 t={t}
               />
             </section>
@@ -260,18 +273,6 @@ export function ProfilePage() {
               />
             )}
 
-            {profile?.canDeleteAccount && (
-              <DangerZone
-                showDeleteConfirm={showDeleteConfirm}
-                setShowDeleteConfirm={setShowDeleteConfirm}
-                deleteText={deleteText}
-                setDeleteText={setDeleteText}
-                deleteConfirmationText={deleteConfirmationText}
-                isDeleting={isDeleting}
-                onDelete={handleDeleteAccount}
-                t={t}
-              />
-            )}
           </>
         )}
       </motion.div>
@@ -655,7 +656,7 @@ function ProfileActionPanel({ onOpenSettings, onOpenHistory, onNewAnalysis, onLo
   );
 }
 
-function ProfileStatusPanel({ activeThemeLabel, languageLabel, spotifyStatus, spotifyError, mostFrequentEmotion, onOpenSettings, t }) {
+function ProfileStatusPanel({ activeThemeLabel, languageLabel, spotifyStatus, spotifyError, mostFrequentEmotion, onOpenSettings, deleteAccountNode, t }) {
   const connected = Boolean(spotifyStatus?.connected);
   const statusRows = [
     { label: t("profile.currentTheme"), value: activeThemeLabel },
@@ -671,7 +672,7 @@ function ProfileStatusPanel({ activeThemeLabel, languageLabel, spotifyStatus, sp
   ];
 
   return (
-    <section className="premium-card p-4 sm:p-5">
+    <section className="premium-card flex h-full flex-col p-4 sm:p-5">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_12rem] lg:items-start">
         <div className="min-w-0">
           <p className="section-eyebrow !px-3 !py-1.5">{t("profile.statusEyebrow")}</p>
@@ -708,6 +709,12 @@ function ProfileStatusPanel({ activeThemeLabel, languageLabel, spotifyStatus, sp
           </div>
         </div>
       </div>
+
+      {deleteAccountNode && (
+        <div className="mt-auto pt-4">
+          {deleteAccountNode}
+        </div>
+      )}
     </section>
   );
 }
@@ -966,6 +973,7 @@ function AdminPanel({ adminOverview, adminError, isExporting, onExportCsv, t, la
 }
 
 function DangerZone({
+  embedded = false,
   showDeleteConfirm,
   setShowDeleteConfirm,
   deleteText,
@@ -978,16 +986,16 @@ function DangerZone({
   const isDeleteReady = deleteText.trim().toUpperCase() === String(deleteConfirmationText).toUpperCase();
 
   return (
-    <section className="rounded-[1.5rem] border border-red-300/20 bg-red-400/10 p-5 shadow-2xl shadow-red-950/10 sm:p-6">
-      <div className="flex flex-col gap-4 lg:min-h-28 lg:flex-row lg:items-end lg:justify-between">
+    <section className={`${embedded ? "rounded-2xl p-4" : "rounded-[1.5rem] p-5 sm:p-6"} border border-red-300/20 bg-red-400/10 shadow-2xl shadow-red-950/10`}>
+      <div className={`${embedded ? "gap-3 xl:flex-row xl:items-end xl:justify-between" : "gap-4 lg:min-h-28 lg:flex-row lg:items-end lg:justify-between"} flex flex-col`}>
         <div className="min-w-0">
-          <h2 className="text-2xl font-black text-red-50">{t("profile.deleteTitle")}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-red-100/80">
+          <h2 className={`${embedded ? "text-base" : "text-2xl"} font-black text-red-50`}>{t("profile.deleteTitle")}</h2>
+          <p className={`${embedded ? "mt-1 text-xs leading-5" : "mt-2 text-sm leading-6"} max-w-3xl text-red-100/80`}>
             {t("profile.deleteDescription")}
           </p>
         </div>
         {!showDeleteConfirm && (
-          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="btn-secondary self-start border-red-200/30 text-red-50 hover:bg-red-300/10 lg:self-end">
+          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="btn-secondary self-start border-red-200/30 text-red-50 hover:bg-red-300/10 xl:self-end">
             {t("profile.deleteButton")}
           </button>
         )}
